@@ -10,6 +10,8 @@ interface KeysInterface {
   SELECTED_FEED_ID: string
   AUTO_REFRESH_ENABLED: string
   AUTO_REFRESH_INTERVAL: string
+  FIRST_COLUMN_WIDTH: string
+  SECOND_COLUMN_WIDTH: string
 }
 
 // 存储键名
@@ -17,7 +19,9 @@ const KEYS: KeysInterface = {
   IS_FIRST_COLUMN_COLLAPSED: 'isFirstColumnCollapsed', // 第一栏是否折叠
   SELECTED_FEED_ID: 'selectedFeedId', // 当前选中的RSS源ID
   AUTO_REFRESH_ENABLED: 'autoRefreshEnabled', // 自动刷新是否启用
-  AUTO_REFRESH_INTERVAL: 'autoRefreshInterval' // 自动刷新间隔（分钟）
+  AUTO_REFRESH_INTERVAL: 'autoRefreshInterval', // 自动刷新间隔（分钟）
+  FIRST_COLUMN_WIDTH: 'firstColumnWidth', // 第一栏宽度
+  SECOND_COLUMN_WIDTH: 'secondColumnWidth' // 第二栏宽度
 }
 
 /**
@@ -209,8 +213,6 @@ export class PreferencesUtil {
       return ''
     }
   }
-
-
 
   /**
    * 检查是否有保存的状态
@@ -421,6 +423,82 @@ export class PreferencesUtil {
     } catch (error) {
       console.error('PreferencesUtil', '获取所有数据失败:', JSON.stringify(error))
       return {}
+    }
+  }
+
+  /**
+   * 同步保存第一栏宽度（像素）
+   * @param width 宽度
+   */
+  static saveFirstColumnWidthSync(width: number): void {
+    if (!PreferencesUtil.preferences) {
+      console.error('PreferencesUtil', '首选项未初始化')
+      return
+    }
+
+    try {
+      PreferencesUtil.preferences.putSync(KEYS.FIRST_COLUMN_WIDTH, width)
+      PreferencesUtil.preferences.flush()
+      console.info('PreferencesUtil', `同步保存第一栏宽度: ${width}`)
+    } catch (error) {
+      console.error('PreferencesUtil', '同步保存第一栏宽度失败:', JSON.stringify(error))
+    }
+  }
+
+  /**
+   * 同步获取第一栏宽度（像素）
+   * @returns 宽度，默认为250
+   */
+  static getFirstColumnWidthSync(): number {
+    if (!PreferencesUtil.preferences) {
+      console.error('PreferencesUtil', '首选项未初始化')
+      return 250
+    }
+
+    try {
+      const width = PreferencesUtil.preferences.getSync(KEYS.FIRST_COLUMN_WIDTH, 250) as number
+      return width
+    } catch (error) {
+      console.error('PreferencesUtil', '同步获取第一栏宽度失败:', JSON.stringify(error))
+      return 250
+    }
+  }
+
+  /**
+   * 同步保存第二栏宽度（像素）
+   * @param width 宽度
+   */
+  static saveSecondColumnWidthSync(width: number): void {
+    if (!PreferencesUtil.preferences) {
+      console.error('PreferencesUtil', '首选项未初始化')
+      return
+    }
+
+    try {
+      PreferencesUtil.preferences.putSync(KEYS.SECOND_COLUMN_WIDTH, width)
+      PreferencesUtil.preferences.flush()
+      console.info('PreferencesUtil', `同步保存第二栏宽度: ${width}`)
+    } catch (error) {
+      console.error('PreferencesUtil', '同步保存第二栏宽度失败:', JSON.stringify(error))
+    }
+  }
+
+  /**
+   * 同步获取第二栏宽度（像素）
+   * @returns 宽度，默认为310
+   */
+  static getSecondColumnWidthSync(): number {
+    if (!PreferencesUtil.preferences) {
+      console.error('PreferencesUtil', '首选项未初始化')
+      return 310
+    }
+
+    try {
+      const width = PreferencesUtil.preferences.getSync(KEYS.SECOND_COLUMN_WIDTH, 310) as number
+      return width
+    } catch (error) {
+      console.error('PreferencesUtil', '同步获取第二栏宽度失败:', JSON.stringify(error))
+      return 310
     }
   }
 }

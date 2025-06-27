@@ -19,6 +19,10 @@ struct Index {
   // 文章列表组件的引用，用于刷新文章列表
   private rssArticleListRef: RSSArticleList | undefined = undefined
 
+  // 记录列宽度的状态，支持拖拽调整
+  @State firstColumnWidth: number = 250      // 第一栏宽度（默认250）
+  @State secondColumnWidth: number = 310     // 第二栏宽度（默认310）
+
   // 处理订阅源点击的回调
   onFeedClick = (feed: RSSFeed) => {
     this.selectedFeed = feed
@@ -162,6 +166,16 @@ struct Index {
         }
       }
       
+      // 恢复列宽度（带边界检查）
+      const savedFirstWidth = PreferencesUtil.getFirstColumnWidthSync()
+      const savedSecondWidth = PreferencesUtil.getSecondColumnWidthSync()
+      if (savedFirstWidth >= 200 && savedFirstWidth <= 400) {
+        this.firstColumnWidth = savedFirstWidth
+      }
+      if (savedSecondWidth >= 250 && savedSecondWidth <= 400) {
+        this.secondColumnWidth = savedSecondWidth
+      }
+      
       console.info('Index', `状态恢复完成 - 折叠状态: ${this.isFirstColumnCollapsed}, 选中RSS源: ${this.selectedFeed ? this.selectedFeed.title : '无'}`)
     } catch (error) {
       console.error('Index', '状态恢复失败:', JSON.stringify(error))
@@ -190,16 +204,27 @@ struct Index {
             onRef: this.onRSSFeedListRef 
           })
         }
-        .width(250)
+        .width(this.firstColumnWidth)
         .height("100%")
         .backgroundColor("#f8f9fa")
-        .transition(TransitionEffect.translate({ x: -250 }).animation({ duration: 300, curve: Curve.EaseInOut }))
+        .transition(TransitionEffect.translate({ x: -this.firstColumnWidth }).animation({ duration: 300, curve: Curve.EaseInOut }))
 
         // 分割线
         Divider()
           .vertical(true)
           .color("#e0e0e0")
-          .strokeWidth(1)
+          .strokeWidth(3) // 分割线宽度
+          .gesture(
+            PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
+              .onActionUpdate((event: GestureEvent) => {
+                let newFirstWidth = this.firstColumnWidth + event.offsetX
+                newFirstWidth = Math.max(200, Math.min(400, newFirstWidth)) // 范围200-400
+                this.firstColumnWidth = newFirstWidth
+              })
+              .onActionEnd(() => {
+                PreferencesUtil.saveFirstColumnWidthSync(this.firstColumnWidth)
+              })
+          )
       }
 
       // 第二栏：文章列表
@@ -224,7 +249,7 @@ struct Index {
         })
           }
       }
-      .width(this.isFirstColumnCollapsed ? 325 : 310) // 当第一栏折叠时宽度增加
+      .width(this.secondColumnWidth)
       .height("100%")
       .backgroundColor("#ffffff")
 
@@ -232,7 +257,18 @@ struct Index {
       Divider()
         .vertical(true)
         .color("#e0e0e0")
-        .strokeWidth(1)
+        .strokeWidth(3)
+        .gesture(
+          PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
+            .onActionUpdate((event: GestureEvent) => {
+              let newSecondWidth = this.secondColumnWidth + event.offsetX
+              newSecondWidth = Math.max(250, Math.min(400, newSecondWidth)) // 范围250-400
+              this.secondColumnWidth = newSecondWidth
+            })
+            .onActionEnd(() => {
+              PreferencesUtil.saveSecondColumnWidthSync(this.secondColumnWidth)
+            })
+        )
 
       // 第三栏：文章详情
       Column() {
