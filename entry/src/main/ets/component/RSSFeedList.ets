@@ -76,6 +76,8 @@ export struct RSSFeedList {
     await this.refreshUnreadCounts()
   }
 
+  @State isRefreshing: boolean = false // 刷新状态
+
   async aboutToAppear() {
     // 注册刷新完成回调，确保刷新结束后更新未读数量
     RSSRefreshService.registerRefreshCompleteCallback(this.refreshCompleteHandler)
@@ -986,6 +988,7 @@ export struct RSSFeedList {
   // 完整刷新（用于手动刷新按钮）
   async fullRefresh() {
     try {
+      this.isRefreshing = true
       // 不设置全局加载状态，只显示进度信息
       this.refreshProgress = '准备刷新...'
       
@@ -1034,6 +1037,7 @@ export struct RSSFeedList {
         this.currentRefreshingFeed = ''
         this.totalFeedsToRefresh = 0
         this.currentRefreshIndex = 0
+        this.isRefreshing = false
       }, 2000)
       
       // 通知父组件数据已更新
@@ -1044,6 +1048,7 @@ export struct RSSFeedList {
       // 将刷新失败的错误信息显示在底部
       this.operationError = `刷新失败: ${error}`
       this.refreshProgress = ''
+      this.isRefreshing = false
       
       // 3秒后自动清除错误信息
       setTimeout(() => {
@@ -1217,35 +1222,18 @@ export struct RSSFeedList {
           .layoutWeight(1)
 
         // 刷新按钮
-        if (this.refreshProgress !== '' && !this.refreshProgress.includes('刷新完成') && !this.refreshProgress.includes('刷新失败')) {
-          Image($r("app.media.refresh"))
-            .width(20)
-            .height(20)
-            .fillColor('#666666')
-            .rotate({ angle: 360 })
-            .animation({
-              duration: 1000,
-              curve: Curve.Linear,
-              iterations: -1,
-              playMode: PlayMode.Normal
-            })
-            .margin({ right: 8 })
-            .enabled(this.refreshProgress === '' || this.refreshProgress.includes('刷新完成') || this.refreshProgress.includes('刷新失败'))
-
-            .onClick(() => {
+        Image(this.isRefreshing ? $r("app.media.loading") : $r("app.media.refresh"))
+          .width(20)
+          .height(20)
+          .fillColor('#666666')
+          .margin({ right: 8 })
+          .enabled(!this.isRefreshing)
+          .opacity(this.isRefreshing ? 0.5 : 1.0)
+          .onClick(() => {
+            if (!this.isRefreshing) {
               this.fullRefresh()
-            })
-        } else {
-          Image($r("app.media.refresh"))
-            .width(20)
-            .height(20)
-            .fillColor('#666666')
-            .margin({ right: 8 })
-
-            .onClick(() => {
-              this.fullRefresh()
-            })
-        }
+            }
+          })
 
         // 添加按钮（支持菜单选择）
         Image($r("app.media.new"))
