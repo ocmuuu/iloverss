@@ -71,9 +71,15 @@ export struct RSSFeedList {
   // 组件引用回调
   onRef?: (ref: RSSFeedList) => void
 
-
+  // RSS刷新完成后的回调，用于在刷新结束后更新未读数量
+  private refreshCompleteHandler: () => void = async () => {
+    await this.refreshUnreadCounts()
+  }
 
   async aboutToAppear() {
+    // 注册刷新完成回调，确保刷新结束后更新未读数量
+    RSSRefreshService.registerRefreshCompleteCallback(this.refreshCompleteHandler)
+
     this.initializeSpecialFeeds()
     
     // 等待数据库准备就绪
@@ -132,6 +138,11 @@ export struct RSSFeedList {
     } finally {
       this.isLoading = false
     }
+  }
+
+  aboutToDisappear() {
+    // 注销刷新完成回调，防止内存泄漏
+    RSSRefreshService.unregisterRefreshCompleteCallback(this.refreshCompleteHandler)
   }
 
   // 初始化特殊标签
@@ -1284,12 +1295,12 @@ export struct RSSFeedList {
                   .width(20)  // 图标尺寸比其他图标小2像素
                   .height(20)
                   .margin({ right: 12 })
-                  .fillColor(this.selectedFeedId === feed.id ? '#007AFF' : '#666666')
+                  .fillColor('#666666')
 
                 Text(feed.title)
                   .fontSize(16)  // 与文章标题一样大
                   .fontWeight(FontWeight.Medium)
-                  .fontColor(this.selectedFeedId === feed.id ? '#007AFF' : '#000')
+                  .fontColor('#000')
                   .textAlign(TextAlign.Start)
                   .layoutWeight(1)
                   .maxLines(1)
@@ -1511,7 +1522,7 @@ export struct RSSFeedList {
                     Text(feed.title)
                       .fontSize(16)
                       .fontWeight(FontWeight.Medium)
-                      .fontColor(this.selectedFeedId === feed.id.toString() ? '#007AFF' : '#000')
+                      .fontColor('#000')
                       .textAlign(TextAlign.Start)
                       .layoutWeight(1)
                       .maxLines(1)
@@ -1573,7 +1584,7 @@ export struct RSSFeedList {
                 Text(feed.title)
                   .fontSize(16)  // 与文章标题一样大
                   .fontWeight(FontWeight.Medium)
-                  .fontColor(this.selectedFeedId === feed.id.toString() ? '#007AFF' : '#000')
+                  .fontColor('#000')
                   .textAlign(TextAlign.Start)
                   .layoutWeight(1)
                   .maxLines(1)

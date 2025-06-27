@@ -204,6 +204,94 @@ export default struct RSSArticleList {
     this.updateFilteredList()
   }
 
+  // 切换文章已读状态
+  async toggleArticleReadStatus(article: RSSArticle) {
+    try {
+      const newReadStatus = !article.readStatus
+      
+      // 立即更新本地状态
+      article.readStatus = newReadStatus
+      this.articleList = [...this.articleList]
+      this.updateFilteredList()
+      
+      // 异步保存到数据库
+      const success = await RSSDataService.markArticleAsRead(article.id, newReadStatus)
+      
+      if (success) {
+        // 通知父组件更新RSS源的未读数量
+        if (this.onArticleReadStatusChanged) {
+          await this.onArticleReadStatusChanged()
+        }
+      } else {
+        // 如果数据库更新失败，回滚本地状态
+        article.readStatus = !newReadStatus
+        this.articleList = [...this.articleList]
+        this.updateFilteredList()
+      }
+    } catch (error) {
+      console.error('RSSArticleList', '切换文章已读状态失败:', JSON.stringify(error))
+      // 回滚本地状态
+      article.readStatus = !article.readStatus
+      this.articleList = [...this.articleList]
+      this.updateFilteredList()
+    }
+  }
+
+  // 切换文章收藏状态
+  async toggleArticleStarStatus(article: RSSArticle) {
+    try {
+      const newStarredStatus = !article.starredStatus
+      
+      // 立即更新本地状态
+      article.starredStatus = newStarredStatus
+      this.articleList = [...this.articleList]
+      this.updateFilteredList()
+      
+      // 异步保存到数据库
+      const success = await RSSDataService.toggleArticleStar(article.id, !newStarredStatus)
+      
+      if (success) {
+        // 如果需要更新未读计数（例如收藏列表）
+        if (this.onArticleReadStatusChanged) {
+          await this.onArticleReadStatusChanged()
+        }
+      } else {
+        // 如果数据库更新失败，回滚本地状态
+        article.starredStatus = !newStarredStatus
+        this.articleList = [...this.articleList]
+        this.updateFilteredList()
+      }
+    } catch (error) {
+      console.error('RSSArticleList', '切换文章收藏状态失败:', JSON.stringify(error))
+      // 回滚本地状态
+      article.starredStatus = !article.starredStatus
+      this.articleList = [...this.articleList]
+      this.updateFilteredList()
+    }
+  }
+
+  // 创建文章右键菜单
+  @Builder
+  createArticleContextMenu(article: RSSArticle) {
+    Menu() {
+      // 已读/未读切换
+      MenuItem({
+        content: article.readStatus ? "标记为未读" : "标记为已读"
+      })
+        .onClick(() => {
+          this.toggleArticleReadStatus(article)
+        })
+
+      // 收藏/取消收藏切换
+      MenuItem({
+        content: article.starredStatus ? "取消收藏" : "添加收藏"
+      })
+        .onClick(() => {
+          this.toggleArticleStarStatus(article)
+        })
+    }
+  }
+
   build() {
     Column() {
       if (this.selectedFeed) {
@@ -268,6 +356,7 @@ export default struct RSSArticleList {
             ListItem() {
               this.ArticleItemView(article)
             }
+            .bindContextMenu(this.createArticleContextMenu(article), ResponseType.RightClick)
             .onClick(async () => {
               
               this.selectedArticleId = article.id
@@ -431,7 +520,7 @@ export default struct RSSArticleList {
           .margin({ top: 6 })
           .lineHeight(20)
         
-        // 文章信息（只显示发布日期）
+        // 文章信息（发布日期和状态标识）
         Row() {
           Text(article.publishDate)
             .fontSize(12)
@@ -439,6 +528,16 @@ export default struct RSSArticleList {
             
           Blank()
           
+          // 收藏标识
+          if (article.starredStatus) {
+            Image($r("app.media.star"))
+              .width(12)
+              .height(12)
+              .fillColor("#ffb300")
+              .margin({ right: 6 })
+          }
+          
+          // 未读标识
           if (!article.readStatus) {
             Circle({ width: 8, height: 8 })
               .fill("#ff4444")

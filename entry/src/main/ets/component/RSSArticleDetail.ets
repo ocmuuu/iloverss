@@ -44,11 +44,8 @@ export default struct RSSArticleDetail {
    * 当selectedArticle变化时触发（恢复Watch机制）
    */
   onSelectedArticleChanged() {
-    console.info('RSSArticleDetail', 'selectedArticle发生变化')
-    // 如果当前正在显示帮助文档，不要自动切换到文章
-    if (this.currentArticleId !== 'help_document') {
-      this.initializeArticle()
-    }
+    // 无论当前是否显示帮助文档，都尝试加载新文章
+    this.initializeArticle()
   }
 
   /**
@@ -58,7 +55,6 @@ export default struct RSSArticleDetail {
     if (this.selectedArticle != undefined) {
       if (this.selectedArticle.id !== this.currentArticleId) {
         this.currentArticleId = this.selectedArticle.id
-        console.info('RSSArticleDetail', `显示文章: ${this.selectedArticle.title}`)
         this.reloadWebContent()
       }
     } else {
