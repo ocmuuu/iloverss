@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "iLove RSS"
+    },
+    {
+      "name": "net_permission_reason",
+      "value": "App needs internet access to fetch RSS content"
+    },
+    {
+      "name": "net_info_permission_reason",
+      "value": "App needs to get network state information"
+    }
+  ]
+}

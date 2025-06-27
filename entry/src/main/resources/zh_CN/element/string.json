@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "模块描述"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "爱看RSS"
+    },
+    {
+      "name": "net_permission_reason",
+      "value": "应用需要网络权限来获取RSS内容"
+    },
+    {
+      "name": "net_info_permission_reason",
+      "value": "应用需要获取网络状态信息"
+    }
+  ]
+}
