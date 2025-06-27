@@ -510,10 +510,10 @@ export default struct RSSArticleList {
           .lineHeight(22)
         
         // 文章摘要
-        Text(this.stripHtmlTags(article.summary))
+        Text(this.stripHtmlTags(article.summary).substring(0, 50))
           .fontSize(14)
           .fontColor(article.readStatus ? "#999999" : "#888888")
-          .maxLines(2)
+          .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width("100%")
           .textAlign(TextAlign.Start)

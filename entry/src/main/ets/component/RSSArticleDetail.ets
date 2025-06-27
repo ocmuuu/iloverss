@@ -10,6 +10,7 @@ export default struct RSSArticleDetail {
   @State private currentArticleId: string = '' // 用于跟踪当前显示的文章ID
   @Link refreshTrigger: number // 用于通知父组件刷新文章列表
   @State private isWebViewReady: boolean = false // WebView是否已准备就绪
+  @State private isLoadingArticle: boolean = false // 文章是否正在加载，用于显示占位层
   private loadedArticleIds: Set<string> = new Set() // 跟踪已加载的文章ID，用于内存管理
   private memoryMonitor: MemoryMonitor = MemoryMonitor.getInstance() // 内存监控实例
 
@@ -68,6 +69,9 @@ export default struct RSSArticleDetail {
   private reloadWebContent() {
     if (this.selectedArticle && this.isWebViewReady) {
       try {
+        // 开始加载，显示占位层
+        this.isLoadingArticle = true
+        
         // 清理内存：如果已加载的文章数量超过8篇，清理WebView
         if (this.loadedArticleIds.size > 8) {
           console.info('RSSArticleDetail', '清理WebView内存，已加载文章数量:', this.loadedArticleIds.size)
@@ -84,6 +88,8 @@ export default struct RSSArticleDetail {
         console.info('RSSArticleDetail', '重新加载Web内容完成，当前已加载文章数:', this.loadedArticleIds.size)
       } catch (error) {
         console.error('RSSArticleDetail', '重新加载Web内容失败:', JSON.stringify(error))
+        // 若加载失败，立即隐藏加载层
+        this.isLoadingArticle = false
       }
     }
   }
@@ -566,6 +572,7 @@ export default struct RSSArticleDetail {
         })
         .width("100%")
         .height("100%")
+        .backgroundColor('#ffffff') // 避免加载过程中出现黑底
         .onControllerAttached(() => {
           console.info('RSSArticleDetail', 'WebView控制器已附加')
           this.isWebViewReady = true
@@ -577,6 +584,8 @@ export default struct RSSArticleDetail {
         })
         .onPageEnd(() => {
           console.info('RSSArticleDetail', '页面加载完成')
+          // 隐藏加载层
+          this.isLoadingArticle = false
           // 如果当前正在显示帮助文档，不要自动切换到文章
           if (this.currentArticleId === 'help_document') {
             console.info('RSSArticleDetail', '当前显示帮助文档，保持不变')
@@ -594,6 +603,7 @@ export default struct RSSArticleDetail {
         })
         .onErrorReceive((event) => {
           console.error('RSSArticleDetail', '文章内容加载失败:', JSON.stringify(event))
+          this.isLoadingArticle = false
         })
         .javaScriptAccess(true)
         .domStorageAccess(true)
@@ -626,6 +636,21 @@ export default struct RSSArticleDetail {
           .justifyContent(FlexAlign.Center)
           .alignItems(HorizontalAlign.Center)
           .backgroundColor("#ffffff")
+        }
+        
+        // 加载中的半透明遮罩层
+        if (this.isLoadingArticle) {
+          Column() {
+            LoadingProgress()
+              .width(40)
+              .height(40)
+              .color('#007AFF')
+          }
+          .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+          .backgroundColor('rgba(255,255,255,0.6)')
         }
       }
       .layoutWeight(1)

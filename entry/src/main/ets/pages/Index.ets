@@ -169,7 +169,7 @@ struct Index {
       // 恢复列宽度（带边界检查）
       const savedFirstWidth = PreferencesUtil.getFirstColumnWidthSync()
       const savedSecondWidth = PreferencesUtil.getSecondColumnWidthSync()
-      if (savedFirstWidth >= 200 && savedFirstWidth <= 400) {
+      if (savedFirstWidth >= 200 && savedFirstWidth <= 300) {
         this.firstColumnWidth = savedFirstWidth
       }
       if (savedSecondWidth >= 250 && savedSecondWidth <= 400) {
@@ -218,7 +218,7 @@ struct Index {
             PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
               .onActionUpdate((event: GestureEvent) => {
                 let newFirstWidth = this.firstColumnWidth + event.offsetX
-                newFirstWidth = Math.max(200, Math.min(400, newFirstWidth)) // 范围200-400
+                newFirstWidth = Math.max(200, Math.min(300, newFirstWidth)) // 范围200-300
                 this.firstColumnWidth = newFirstWidth
               })
               .onActionEnd(() => {
