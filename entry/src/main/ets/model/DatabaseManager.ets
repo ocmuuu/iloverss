@@ -429,6 +429,7 @@ export class DatabaseManager {
         last_build_date TEXT,
         image_url TEXT,
         favicon_url TEXT,
+        favicon_path TEXT,
         category TEXT,
         is_active INTEGER DEFAULT 1,
         sort_order INTEGER DEFAULT 0,
@@ -710,6 +711,38 @@ export class DatabaseManager {
           'https://sspai.com/',
           '数字生活',
           2
+        ),
+        new DefaultFeedData(
+          'https://www.ifanr.com/feed',
+          '爱范儿',
+          '让未来触手可及，专注于数字产品和创新科技',
+          'https://www.ifanr.com/',
+          '科技资讯',
+          3
+        ),
+        new DefaultFeedData(
+          'https://www.yystv.cn/rss/feed',
+          '游戏研究社',
+          '专业游戏媒体，关注游戏文化和游戏产业',
+          'https://www.yystv.cn/',
+          '游戏资讯',
+          4
+        ),
+        new DefaultFeedData(
+          'https://www.gcores.com/rss',
+          '机核网',
+          '游戏、科技、流行文化，聚合内容平台',
+          'https://www.gcores.com/',
+          '游戏文化',
+          5
+        ),
+        new DefaultFeedData(
+          'https://www.solidot.org/index.rss',
+          'Solidot',
+          '奇客的资讯，重要的东西',
+          'https://www.solidot.org/',
+          '科技新闻',
+          6
         )
       ]
 

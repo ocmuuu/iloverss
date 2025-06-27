@@ -7,6 +7,13 @@ import { FeedDAO } from '../model/FeedDAO'
 import type { RSSFolderDB } from '../model/FolderDAO'
 import { FolderDAO } from '../model/FolderDAO'
 import pasteboard from '@ohos.pasteboard'
+import { FaviconDownloader } from '../utils/FaviconDownloader'
+import RSSService from '../service/RSSService'
+import { ParsedFeed } from '../utils/feed/ParsedFeed'
+import { common } from '@kit.AbilityKit'
+import http from '@ohos.net.http'
+import { FeedParser } from '../utils/feed/FeedParser'
+import { ParserData } from '../utils/feed/ParserData'
 
 // 扩展的文件夹接口，包含未读数量
 interface RSSFolderWithUnread extends RSSFolderDB {
@@ -33,6 +40,8 @@ interface RSSFeedWithUnread {
   lastError: string
   unreadCount: number
   favicon?: Resource | string // 添加favicon属性
+  faviconPath?: string | null // 自定义图标路径
+
 }
 
 @Component
@@ -63,8 +72,11 @@ export struct RSSFeedList {
   
   // 添加功能相关状态
   @State showAddInput: boolean = false // 是否显示添加输入框
-  @State addInputType: 'subscription' | 'folder' | null = null // 添加类型：订阅或文件夹
+  @State addInputType: 'subscription' | 'folder' | 'icon' | null = null // 添加类型：订阅、文件夹或图标
   @State addInputValue: string = '' // 添加输入框的值
+  
+  // 图标设置相关状态
+  @State settingIconFeedId: number | null = null // 正在设置图标的FEED ID
   
   // 点击RSS源的回调
   onFeedClick?: (feed: RSSFeed) => void
@@ -308,7 +320,8 @@ export struct RSSFeedList {
             errorCount: resultSet.getLong(resultSet.getColumnIndex('error_count')),
             lastError: resultSet.getString(resultSet.getColumnIndex('last_error')),
             unreadCount: resultSet.getLong(resultSet.getColumnIndex('unread_count')),
-            favicon: $r("app.media.rss") // 使用默认图标
+            favicon: $r("app.media.rss"),
+            faviconPath: resultSet.getString(resultSet.getColumnIndex('favicon_path'))
           }
           feeds.push(feed)
         } while (resultSet.goToNextRow())
@@ -566,6 +579,8 @@ export struct RSSFeedList {
         await this.performAddFolder(this.addInputValue.trim())
         // 文件夹添加成功后关闭输入框
         this.cancelAdd()
+      } else if (this.addInputType === 'icon') {
+        await this.confirmSetIcon()
       }
       
     } catch (error) {
@@ -584,6 +599,96 @@ export struct RSSFeedList {
     this.showAddInput = false
     this.addInputType = null
     this.addInputValue = ''
+    this.settingIconFeedId = null
+  }
+
+  // 设置FEED图标
+  setFeedIcon(feed: RSSFeedWithUnread) {
+    this.showAddInput = true
+    this.addInputType = 'icon'
+    this.addInputValue = ''
+    this.settingIconFeedId = feed.id
+  }
+
+  // 确认设置图标
+  async confirmSetIcon() {
+    if (!this.addInputValue.trim() || this.settingIconFeedId === null) {
+      this.cancelAdd()
+      return
+    }
+
+    try {
+      const iconUrl = this.addInputValue.trim()
+      const feedId = this.settingIconFeedId
+      
+      // 先关闭输入框
+      this.cancelAdd()
+      
+      // 显示下载进度
+      this.refreshProgress = '正在下载图标...'
+      
+      // 获取应用上下文
+      const context = getContext(this) as common.UIAbilityContext
+      
+      // 下载图标
+      const faviconPath = await FaviconDownloader.downloadAndSaveFavicon(feedId, iconUrl, context)
+      
+      if (faviconPath) {
+        // 保存到数据库
+        await FeedDAO.updateFaviconPath(feedId, faviconPath)
+        
+        // 立即更新本地feeds数组中的faviconPath
+        const updatedFeeds = this.feeds.map(feed => {
+          if (feed.id === feedId) {
+            return {
+              id: feed.id,
+              folderId: feed.folderId,
+              url: feed.url,
+              title: feed.title,
+              description: feed.description,
+              link: feed.link,
+              language: feed.language,
+              lastBuildDate: feed.lastBuildDate,
+              imageUrl: feed.imageUrl,
+              category: feed.category,
+              isActive: feed.isActive,
+              sortOrder: feed.sortOrder,
+              createdAt: feed.createdAt,
+              updatedAt: feed.updatedAt,
+              lastFetchAt: feed.lastFetchAt,
+              errorCount: feed.errorCount,
+              lastError: feed.lastError,
+              unreadCount: feed.unreadCount,
+              favicon: feed.favicon,
+              faviconPath: faviconPath
+            }
+          }
+          return feed
+        })
+        this.feeds = updatedFeeds
+        
+        // 强制触发UI更新
+        this.uiUpdateTrigger++
+        
+        this.refreshProgress = '图标设置成功！'
+        
+        // 2秒后清除成功信息
+        setTimeout(() => {
+          this.refreshProgress = ''
+        }, 2000)
+      } else {
+        throw new Error('图标下载失败')
+      }
+      
+    } catch (error) {
+      this.refreshProgress = ''
+      this.operationError = `设置图标失败: ${error}`
+      
+      // 3秒后自动清除错误信息
+      setTimeout(() => {
+        this.operationError = null
+      }, 3000)
+    }
   }
 
   // 执行添加订阅
@@ -898,7 +1003,8 @@ export struct RSSFeedList {
           errorCount: feed.errorCount,
           lastError: feed.lastError,
           unreadCount: newCount,
-          favicon: $r("app.media.rss") // 使用默认图标
+          favicon: $r("app.media.rss"),
+          faviconPath: feed.faviconPath
         }
         updatedFeeds.push(updatedFeed)
       }
@@ -939,7 +1045,7 @@ export struct RSSFeedList {
         title: feed.title,
         description: feed.description,
         url: feed.url,
-        favicon: feed.favicon,
+        favicon: feed.favicon,  // 保留原有的图标，不要重置为RSS图标
         unreadCount: newUnreadCount
       }
       updatedSpecialFeeds.push(updatedFeed)
@@ -1018,7 +1124,7 @@ export struct RSSFeedList {
         
         try {
           // 调用RSS刷新服务来更新FEED内容
-          await RSSRefreshService.refreshSingleFeed(feed.id)
+          await this.refreshSingleFeed(feed)
           
         } catch (feedError) {
           // 继续刷新其他FEED
@@ -1059,7 +1165,57 @@ export struct RSSFeedList {
     }
   }
 
+  // 获取或解析 RSS 数据
+  private async refreshSingleFeed(feed: RSSFeedWithUnread): Promise<void> {
+    const feedURL = feed.url || ''
+    if (!feedURL) {
+      console.warn('RSSFeedList', `RSS源 ${feed.title || '未知'} 缺少URL，跳过解析`)
+      return
+    }
 
+    try {
+      console.info('RSSFeedList', `开始解析RSS源: ${feed.title || feedURL}`)
+      
+      // 获取RSS内容
+      const httpRequest = http.createHttp()
+      const response = await new Promise<http.HttpResponse>((resolve, reject) => {
+        httpRequest.request(feedURL, {
+          method: http.RequestMethod.GET,
+          connectTimeout: 10000,
+          readTimeout: 10000,
+          header: {
+            'User-Agent': 'HarmonyOS RSS Reader/1.0'
+          }
+        }, (err, data) => {
+          httpRequest.destroy()
+          if (err) {
+            reject(err)
+          } else {
+            resolve(data)
+          }
+        })
+      })
+
+      if (response.responseCode === http.ResponseCode.OK) {
+        const xmlContent = response.result as string
+        const parserData = ParserData.create(xmlContent, feedURL)
+        const parsedData = await FeedParser.parse(parserData)
+        
+        if (parsedData) {
+          console.info('RSSFeedList', `RSS源解析成功: ${parsedData.title || feedURL}, 共 ${parsedData.items?.length || 0} 篇文章`)
+          
+          // 更新UI
+          await this.updateUnreadCountsSilently()
+        } else {
+          console.warn('RSSFeedList', `RSS源解析返回空数据: ${feedURL}`)
+        }
+      } else {
+        throw new Error(`HTTP请求失败: ${response.responseCode}`)
+      }
+    } catch (error) {
+      console.error('RSSFeedList', `RSS源解析失败 ${feedURL}:`, JSON.stringify(error))
+    }
+  }
 
   // 转换数据库Feed到前端模型
   private dbFeedToRSSFeed(dbFeed: RSSFeedWithUnread): RSSFeed {
@@ -1071,6 +1227,27 @@ export struct RSSFeedList {
       url: dbFeed.url,
       favicon: $r("app.media.rss"),
       unreadCount: dbFeed.unreadCount
+    }
+  }
+
+  // 获取Feed图标资源
+  @Builder
+  getFeedIcon(feed: RSSFeedWithUnread) {
+    if (feed.faviconPath && feed.faviconPath.trim() !== '') {
+      // 使用自定义图标
+      Image('file://' + feed.faviconPath)
+        .width(20)
+        .height(20)
+        .margin({ right: 12 })
+        .borderRadius(4)
+        .alt($r("app.media.rss")) // 使用alt属性作为备用图标
+    } else {
+      // 使用默认RSS图标
+      Image($r("app.media.rss"))
+        .width(20)
+        .height(20)
+        .margin({ right: 12 })
+        .borderRadius(4)
     }
   }
 
@@ -1123,6 +1300,14 @@ export struct RSSFeedList {
           }
         }, (folder: RSSFolderDB) => `move_${folder.id}`)
       }
+
+      // 设置图标选项
+      MenuItem({
+        content: "设置图标"
+      })
+        .onClick(() => {
+          this.setFeedIcon(feed)
+        })
 
       // 分隔线（可选，如果支持的话）
       // MenuDivider()
@@ -1279,7 +1464,7 @@ export struct RSSFeedList {
           ForEach(this.specialFeeds, (feed: RSSFeed) => {
             ListItem() {
               Row() {
-                Image(feed.favicon)
+                Image(feed.favicon || $r("app.media.rss"))
                   .width(20)  // 图标尺寸比其他图标小2像素
                   .height(20)
                   .margin({ right: 12 })
@@ -1332,7 +1517,9 @@ export struct RSSFeedList {
               Row() {
                 TextInput({ 
                   text: this.addInputValue,
-                  placeholder: this.addInputType === 'subscription' ? '请输入RSS源URL' : '请输入文件夹名称'
+                  placeholder: this.addInputType === 'subscription' ? '请输入RSS源URL' : 
+                              this.addInputType === 'folder' ? '请输入文件夹名称' :
+                              this.addInputType === 'icon' ? '请输入图标URL' : ''
                 })
                   .defaultFocus(true)
                   .fontSize(16)
@@ -1501,11 +1688,7 @@ export struct RSSFeedList {
                     Blank()
                       .width(20)
 
-                    Image(feed.favicon || $r("app.media.rss"))
-                      .width(20)  // 图标与一行文字高度匹配
-                      .height(20)
-                      .margin({ right: 12 })
-                      .borderRadius(4)
+                    this.getFeedIcon(feed)
 
                     Text(feed.title)
                       .fontSize(16)
@@ -1563,11 +1746,7 @@ export struct RSSFeedList {
           ForEach(this.feeds.filter(feed => feed.folderId === null), (feed: RSSFeedWithUnread) => {
             ListItem() {
               Row() {
-                Image(feed.favicon || $r("app.media.rss"))
-                  .width(20)  // 图标与一行文字高度匹配
-                  .height(20)
-                  .margin({ right: 12 })
-                  .borderRadius(4)
+                this.getFeedIcon(feed)
 
                 Text(feed.title)
                   .fontSize(16)  // 与文章标题一样大
@@ -1632,7 +1811,7 @@ export struct RSSFeedList {
 
               // 底部信息显示区域（刷新进度和操作错误）
         if (this.refreshProgress !== '' || this.operationError !== null) {
-          Column() {
+          Row() {
             // 刷新进度信息
             if (this.refreshProgress !== '') {
               Row() {
@@ -1655,20 +1834,6 @@ export struct RSSFeedList {
               .width('100%')
               .padding({ left: 16, right: 16, top: 8, bottom: 8 })
               .alignItems(VerticalAlign.Center)
-              
-              // 进度条（可选）
-              if (this.totalFeedsToRefresh > 0 && this.currentRefreshIndex > 0) {
-                Progress({
-                  value: this.currentRefreshIndex,
-                  total: this.totalFeedsToRefresh,
-                  type: ProgressType.Linear
-                })
-                  .width('90%')
-                  .height(4)
-                  .color('#007AFF')
-                  .backgroundColor('#f0f0f0')
-                  .margin({ bottom: 8 })
-              }
             }
             
             // 操作错误信息
@@ -1683,7 +1848,7 @@ export struct RSSFeedList {
                 Text(this.operationError)
                   .fontSize(12)
                   .fontColor('#ff4444')
-                  .maxLines(2)
+                  .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .layoutWeight(1)
                 

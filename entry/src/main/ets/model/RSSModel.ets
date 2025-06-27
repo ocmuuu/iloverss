@@ -28,6 +28,7 @@ export interface RSSFeed {
   description: string
   url: string
   favicon?: Resource
+  faviconPath?: string  // 本地下载的favicon路径
   unreadCount: number
 }
 
@@ -158,6 +159,7 @@ export class RSSModelConverter {
       description: dbFeed.description || '',
       url: dbFeed.url || '',
       favicon: $r("app.media.rss"), // 默认图标
+      faviconPath: dbFeed.faviconPath || '',
       unreadCount: 0 // 需要单独查询
     }
   }

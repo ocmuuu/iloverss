@@ -23,6 +23,7 @@ export interface RSSFeedDB {
   lastFetchAt: string | null
   errorCount: number
   lastError: string | null
+  faviconPath?: string | null
 }
 
 /**
@@ -439,8 +440,75 @@ export class FeedDAO {
       updatedAt: resultSet.getString(resultSet.getColumnIndex('updated_at')),
       lastFetchAt: resultSet.getString(resultSet.getColumnIndex('last_fetch_at')),
       errorCount: resultSet.getLong(resultSet.getColumnIndex('error_count')),
-      lastError: resultSet.getString(resultSet.getColumnIndex('last_error'))
+      lastError: resultSet.getString(resultSet.getColumnIndex('last_error')),
+      faviconPath: resultSet.getString(resultSet.getColumnIndex('favicon_path')) || undefined
     }
+  }
+
+  /**
+   * 更新Feed的本地favicon路径
+   * @param feedId Feed ID
+   * @param faviconPath 本地favicon路径
+   */
+  static async updateFaviconPath(feedId: number, faviconPath: string): Promise<void> {
+    const store = DatabaseManager.getStore()
+    if (!store) {
+      throw new Error('数据库未初始化')
+    }
+
+    const sql = `
+      UPDATE feeds 
+      SET favicon_path = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `
+    
+    await store.executeSql(sql, [faviconPath, feedId])
+    hilog.info(0x0000, 'FeedDAO', `Feed ${feedId} favicon路径已更新: ${faviconPath}`)
+  }
+
+  /**
+   * 获取Feed的本地favicon路径
+   * @param feedId Feed ID
+   * @returns 本地favicon路径或null
+   */
+  static async getFaviconPath(feedId: number): Promise<string | null> {
+    const store = DatabaseManager.getStore()
+    if (!store) {
+      throw new Error('数据库未初始化')
+    }
+
+    const sql = `SELECT favicon_path FROM feeds WHERE id = ?`
+    const resultSet = await store.querySql(sql, [feedId])
+    
+    if (resultSet.rowCount > 0) {
+      resultSet.goToFirstRow()
+      const faviconPath = resultSet.getString(resultSet.getColumnIndex('favicon_path'))
+      resultSet.close()
+      return faviconPath || null
+    } else {
+      resultSet.close()
+      return null
+    }
+  }
+
+  /**
+   * 清除Feed的本地favicon路径
+   * @param feedId Feed ID
+   */
+  static async clearFaviconPath(feedId: number): Promise<void> {
+    const store = DatabaseManager.getStore()
+    if (!store) {
+      throw new Error('数据库未初始化')
+    }
+
+    const sql = `
+      UPDATE feeds 
+      SET favicon_path = NULL, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `
+    
+    await store.executeSql(sql, [feedId])
+    hilog.info(0x0000, 'FeedDAO', `Feed ${feedId} favicon路径已清除`)
   }
 }
 
