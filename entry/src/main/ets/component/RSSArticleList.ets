@@ -332,7 +332,7 @@ export default struct RSSArticleList {
               .margin({ right: 8 })
 
             // 标记全部已读按钮
-            Image($r("app.media.all"))
+            Image($r("app.media.mark_all"))
               .width(20)
               .height(20)
               .fillColor(this.getUnreadCount() > 0 ? "#666666" : "#cccccc")
@@ -555,5 +555,133 @@ export default struct RSSArticleList {
       (article.readStatus ? "#f8f8f8" : "#ffffff"))
     .justifyContent(FlexAlign.Start)
     .alignItems(VerticalAlign.Top)
+  }
+
+  /**
+   * 获取当前选中文章在列表中的索引
+   */
+  getCurrentArticleIndex(): number {
+    if (!this.selectedArticleId) {
+      return -1
+    }
+    return this.filteredArticleList.findIndex(article => article.id === this.selectedArticleId)
+  }
+
+  /**
+   * 获取当前的文章列表
+   */
+  getCurrentArticleList(): RSSArticle[] {
+    return this.filteredArticleList
+  }
+
+  /**
+   * 设置选中的文章
+   */
+  async setSelectedArticle(articleId: string): Promise<RSSArticle | undefined> {
+    this.selectedArticleId = articleId
+    const article = this.filteredArticleList.find(article => article.id === articleId)
+    
+    if (article) {
+      // 如果文章未读，标记为已读（与点击文章列表项的逻辑一致）
+      const wasUnread = !article.readStatus
+      
+      if (wasUnread) {
+        // 立即更新本地状态以提供即时反馈
+        article.readStatus = true
+        // 强制刷新列表显示
+        this.articleList = [...this.articleList]
+        this.updateFilteredList()
+        
+        // 异步保存到数据库
+        try {
+          const success = await RSSDataService.markArticleAsRead(article.id)
+          
+          if (success) {
+            // 确保数据库操作完全提交后再通知父组件
+            await new Promise<void>(resolve => setTimeout(resolve, 100))
+            
+            // 通知父组件更新RSS源的未读数量
+            if (this.onArticleReadStatusChanged) {
+              await this.onArticleReadStatusChanged()
+            }
+          } else {
+            // 如果数据库更新失败，回滚本地状态
+            console.error('RSSArticleList', '数据库标记已读失败，回滚本地状态')
+            article.readStatus = false
+            this.articleList = [...this.articleList]
+            this.updateFilteredList()
+          }
+        } catch (error) {
+          console.error('RSSArticleList', '标记文章已读失败:', JSON.stringify(error))
+          // 回滚本地状态
+          article.readStatus = false
+          this.articleList = [...this.articleList]
+          this.updateFilteredList()
+        }
+      }
+      
+      // 调用父组件的点击回调，用于显示文章详情
+      if (this.onArticleClick) {
+        this.onArticleClick(article)
+      }
+    }
+    
+    return article
+  }
+
+  /**
+   * 根据索引设置选中的文章
+   */
+  async setSelectedArticleByIndex(index: number): Promise<RSSArticle | undefined> {
+    if (index >= 0 && index < this.filteredArticleList.length) {
+      const article = this.filteredArticleList[index]
+      this.selectedArticleId = article.id
+      
+      // 如果文章未读，标记为已读（与点击文章列表项的逻辑一致）
+      const wasUnread = !article.readStatus
+      
+      if (wasUnread) {
+        // 立即更新本地状态以提供即时反馈
+        article.readStatus = true
+        // 强制刷新列表显示
+        this.articleList = [...this.articleList]
+        this.updateFilteredList()
+        
+        // 异步保存到数据库
+        try {
+          const success = await RSSDataService.markArticleAsRead(article.id)
+          
+          if (success) {
+            // 确保数据库操作完全提交后再通知父组件
+            await new Promise<void>(resolve => setTimeout(resolve, 100))
+            
+            // 通知父组件更新RSS源的未读数量
+            if (this.onArticleReadStatusChanged) {
+              await this.onArticleReadStatusChanged()
+            }
+          } else {
+            // 如果数据库更新失败，回滚本地状态
+            console.error('RSSArticleList', '数据库标记已读失败，回滚本地状态')
+            article.readStatus = false
+            this.articleList = [...this.articleList]
+            this.updateFilteredList()
+          }
+        } catch (error) {
+          console.error('RSSArticleList', '标记文章已读失败:', JSON.stringify(error))
+          // 回滚本地状态
+          article.readStatus = false
+          this.articleList = [...this.articleList]
+          this.updateFilteredList()
+        }
+      }
+      
+      // 调用父组件的点击回调，用于显示文章详情
+      if (this.onArticleClick) {
+        this.onArticleClick(article)
+      }
+      
+      return article
+    }
+    return undefined
   }
 } 

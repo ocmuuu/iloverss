@@ -14,6 +14,12 @@ export default struct RSSArticleDetail {
   private loadedArticleIds: Set<string> = new Set() // 跟踪已加载的文章ID，用于内存管理
   private memoryMonitor: MemoryMonitor = MemoryMonitor.getInstance() // 内存监控实例
 
+  // 新增：文章切换相关属性
+  @Prop canGoPrevious: boolean = false // 是否可以切换到上一篇
+  @Prop canGoNext: boolean = false // 是否可以切换到下一篇
+  onPreviousArticle?: () => void // 切换到上一篇的回调
+  onNextArticle?: () => void // 切换到下一篇的回调
+
   /**
    * 组件即将出现时的生命周期
    */
@@ -507,6 +513,30 @@ export default struct RSSArticleDetail {
         Blank()
         
         Row() {
+          // 上一篇按钮
+          Image($r("app.media.up"))
+            .width(20)
+            .height(20)
+            .margin({ right: 12 })
+            .opacity(this.canGoPrevious ? 1.0 : 0.3)
+            .onClick(() => {
+              if (this.canGoPrevious && this.onPreviousArticle) {
+                this.onPreviousArticle()
+              }
+            })
+          
+          // 下一篇按钮
+          Image($r("app.media.down"))
+            .width(20)
+            .height(20)
+            .margin({ right: 12 })
+            .opacity(this.canGoNext ? 1.0 : 0.3)
+            .onClick(() => {
+              if (this.canGoNext && this.onNextArticle) {
+                this.onNextArticle()
+              }
+            })
+          
           // 标记为已读/未读按钮
           Image(this.selectedArticle?.readStatus ? $r("app.media.read") : $r("app.media.unread"))
             .width(20)

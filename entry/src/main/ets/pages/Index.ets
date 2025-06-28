@@ -89,6 +89,60 @@ struct Index {
     }
   }
 
+  // 切换到上一篇文章
+  onPreviousArticle = async () => {
+    if (!this.rssArticleListRef) {
+      console.warn('Index', '文章列表引用为空，无法切换到上一篇')
+      return
+    }
+
+    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
+    if (currentIndex > 0) {
+      const previousArticle = await this.rssArticleListRef.setSelectedArticleByIndex(currentIndex - 1)
+      if (previousArticle) {
+        this.selectedArticle = previousArticle
+        console.info('Index', `切换到上一篇文章: ${previousArticle.title}`)
+      }
+    }
+  }
+
+  // 切换到下一篇文章
+  onNextArticle = async () => {
+    if (!this.rssArticleListRef) {
+      console.warn('Index', '文章列表引用为空，无法切换到下一篇')
+      return
+    }
+
+    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
+    const articleList = this.rssArticleListRef.getCurrentArticleList()
+    if (currentIndex >= 0 && currentIndex < articleList.length - 1) {
+      const nextArticle = await this.rssArticleListRef.setSelectedArticleByIndex(currentIndex + 1)
+      if (nextArticle) {
+        this.selectedArticle = nextArticle
+        console.info('Index', `切换到下一篇文章: ${nextArticle.title}`)
+      }
+    }
+  }
+
+  // 计算是否可以切换到上一篇
+  private canGoPrevious(): boolean {
+    if (!this.rssArticleListRef) {
+      return false
+    }
+    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
+    return currentIndex > 0
+  }
+
+  // 计算是否可以切换到下一篇
+  private canGoNext(): boolean {
+    if (!this.rssArticleListRef) {
+      return false
+    }
+    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
+    const articleList = this.rssArticleListRef.getCurrentArticleList()
+    return currentIndex >= 0 && currentIndex < articleList.length - 1
+  }
+
   // 组件即将出现时的生命周期
   async aboutToAppear() {
     try {
@@ -275,12 +329,20 @@ struct Index {
           if (this.selectedArticle != undefined) {
             RSSArticleDetail({ 
               selectedArticle: this.selectedArticle,
-              refreshTrigger: $refreshTrigger 
+              refreshTrigger: $refreshTrigger,
+              canGoPrevious: this.canGoPrevious(),
+              canGoNext: this.canGoNext(),
+              onPreviousArticle: this.onPreviousArticle,
+              onNextArticle: this.onNextArticle
             })
           } else {
             RSSArticleDetail({ 
               selectedArticle: undefined,
-              refreshTrigger: $refreshTrigger 
+              refreshTrigger: $refreshTrigger,
+              canGoPrevious: false,
+              canGoNext: false,
+              onPreviousArticle: this.onPreviousArticle,
+              onNextArticle: this.onNextArticle
             })
           }
       }
