@@ -106,6 +106,44 @@ export class FeedDAO {
   }
 
   /**
+   * 获取所有RSS源
+   */
+  static async getAllFeeds(includeInactive: boolean = false): Promise<RSSFeedDB[]> {
+    const store = DatabaseManager.getStore()
+    if (!store) {
+      throw new Error('数据库未初始化')
+    }
+
+    try {
+      let sql = 'SELECT * FROM feeds'
+      const params: Array<string | number | boolean | null> = []
+
+      if (!includeInactive) {
+        sql += ' WHERE is_active = 1'
+      }
+
+      sql += ' ORDER BY sort_order ASC, created_at ASC'
+
+      const resultSet = await store.querySql(sql, params)
+
+      const feeds: RSSFeedDB[] = []
+      if (resultSet.rowCount > 0) {
+        resultSet.goToFirstRow()
+        do {
+          feeds.push(FeedDAO.mapResultSetToFeed(resultSet))
+        } while (resultSet.goToNextRow())
+      }
+
+      resultSet.close()
+      hilog.info(0x0000, 'FeedDAO', `获取到 ${feeds.length} 个RSS源`)
+      return feeds
+    } catch (error) {
+      hilog.error(0x0000, 'FeedDAO', '获取所有RSS源失败: %{public}s', JSON.stringify(error) ?? '')
+      throw new Error('获取所有RSS源失败')
+    }
+  }
+
+  /**
    * 根据ID获取RSS源
    */
   static async getFeedById(id: number): Promise<RSSFeedDB | null> {

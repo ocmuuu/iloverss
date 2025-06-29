@@ -13,6 +13,7 @@ import { ParsedFeed } from '../utils/feed/ParsedFeed'
 import { common } from '@kit.AbilityKit'
 import { FeedDataService, type RSSFeedWithUnread } from '../service/FeedDataService'
 import type { RSSFolderWithUnread } from '../model/FolderDAO'
+import { OPMLService } from '../service/OPMLService'
 
 @Component
 export struct RSSFeedList {
@@ -439,6 +440,41 @@ export struct RSSFeedList {
     } catch (error) {
       this.operationError = `移动失败: ${error}`
       setTimeout(() => { this.operationError = null }, 3000)
+    }
+  }
+
+  // 导出OPML
+  async exportOpml() {
+    this.operationError = null
+    this.refreshProgress = '正在导出OPML文件...'
+
+    try {
+      const opmlString = await OPMLService.generateOpml()
+      const context = getContext(this) as common.UIAbilityContext
+      const filePath = await OPMLService.saveOpmlFile(opmlString, context)
+
+      // 复制路径到剪贴板，方便用户粘贴
+      try {
+        const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, filePath)
+        const systemPaste = pasteboard.getSystemPasteboard()
+        await systemPaste.setData(pasteData)
+      } catch (e) {
+        // ignore
+      }
+
+      this.refreshProgress = `OPML导出成功！已保存至下载目录:\n${filePath}(已复制路径)`
+      setTimeout(() => {
+        this.refreshProgress = ''
+      }, 5000)
+    } catch (error) {
+      this.refreshProgress = ''
+      // 如果不是用户取消操作，才显示错误信息
+      if (error && error.message && !error.message.includes('用户取消')) {
+        this.operationError = `导出失败: ${error.message}`
+        setTimeout(() => {
+          this.operationError = null
+        }, 3000)
+      }
     }
   }
 
@@ -1125,6 +1161,34 @@ export struct RSSFeedList {
       })
         .onClick(() => {
           this.fullRefresh()
+        })
+
+      // 导入OPML
+      MenuItem({
+        content: "导入OPML"
+      })
+        .onClick(() => {
+          this.refreshProgress = '正在导入OPML...'
+          const context = getContext(this) as common.UIAbilityContext
+          OPMLService.importOpml(context).then(async () => {
+            this.refreshProgress = '导入完成，正在刷新列表...'
+            await Promise.all([this.loadFeeds(), this.loadFolders()])
+            await this.updateUnreadCountsSilently()
+            this.refreshProgress = 'OPML导入成功！'
+            setTimeout(()=>{this.refreshProgress='' },3000)
+          }).catch((err: Error) => {
+            this.refreshProgress = ''
+            this.operationError = `导入失败: ${err.message}`
+            setTimeout(()=>{this.operationError=null},3000)
+          })
+        })
+
+      // 导出OPML
+      MenuItem({
+        content: "导出OPML"
+      })
+        .onClick(() => {
+          this.exportOpml()
         })
     }
   }

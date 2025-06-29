@@ -27,7 +27,7 @@ export default class EntryAbility extends UIAbility {
         
         // 验证默认RSS源是否已插入
         try {
-                     const store = DatabaseManager.getStore();
+            const store = DatabaseManager.getStore();
            if (store) {
              const result = await store.querySql('SELECT COUNT(*) as count FROM feeds');
              let feedCount = 0;

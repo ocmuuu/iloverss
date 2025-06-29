@@ -19,6 +19,14 @@
     {
       "name": "net_info_permission_reason",
       "value": "需要获取网络状态信息"
+    },
+    {
+      "name": "write_media_permission_reason",
+      "value": "导出 OPML 文件到下载目录需要写入存储权限"
+    },
+    {
+      "name": "read_media_permission_reason",
+      "value": "导入 OPML 文件需要读取存储权限"
     }
   ]
 }
