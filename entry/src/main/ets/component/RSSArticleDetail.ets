@@ -3,6 +3,11 @@ import webview from '@ohos.web.webview'
 import resourceManager from '@ohos.resourceManager'
 import { MemoryMonitor, MemoryInfo } from '../utils/MemoryMonitor'
 
+// 兼容可能存在 destroy() 方法的 WebViewController
+interface WebviewDestroyable {
+  destroy?: () => void
+}
+
 @Component
 export default struct RSSArticleDetail {
   @Prop @Watch('onSelectedArticleChanged') selectedArticle: RSSArticle | undefined = undefined
@@ -13,6 +18,9 @@ export default struct RSSArticleDetail {
   @State private isLoadingArticle: boolean = false // 文章是否正在加载，用于显示占位层
   private loadedArticleIds: Set<string> = new Set() // 跟踪已加载的文章ID，用于内存管理
   private memoryMonitor: MemoryMonitor = MemoryMonitor.getInstance() // 内存监控实例
+  // 新增：定期回收 WebView 相关属性
+  private recycleIntervalMs: number = 10 * 60 * 1000 // 10 分钟回收一次
+  private recycleTimerId: number | undefined = undefined
 
   // 新增：文章切换相关属性
   @Prop canGoPrevious: boolean = false // 是否可以切换到上一篇
@@ -26,6 +34,7 @@ export default struct RSSArticleDetail {
   aboutToAppear() {
     this.initializeArticle()
     this.setupMemoryMonitoring()
+    this.startRecycleTimer()
   }
 
   onPageShow() {
@@ -39,6 +48,8 @@ export default struct RSSArticleDetail {
     try {
       // 清理WebView内存
       this.clearWebViewMemory()
+      // 停止回收定时器
+      this.stopRecycleTimer()
       // 移除内存监控回调
       this.memoryMonitor.removeCallback(this.onMemoryStatusChanged)
       console.info('RSSArticleDetail', '组件销毁，已清理WebView资源')
@@ -503,6 +514,65 @@ export default struct RSSArticleDetail {
     // 记录内存使用情况（每30秒记录一次，避免日志过多）
     if (memoryInfo.timestamp % 30000 < 1000) {
       console.info('RSSArticleDetail', `当前内存使用: ${usageMB}MB, 已加载文章数: ${this.loadedArticleIds.size}`)
+    }
+  }
+
+  /**
+   * 启动 WebView 回收定时器
+   */
+  private startRecycleTimer() {
+    // 若已存在定时器则先清理
+    if (this.recycleTimerId !== undefined) {
+      clearInterval(this.recycleTimerId)
+    }
+
+    this.recycleTimerId = setInterval(() => {
+      console.info('RSSArticleDetail', '定时回收 WebView 开始')
+      this.recycleWebView()
+    }, this.recycleIntervalMs)
+
+    console.info('RSSArticleDetail', `已启动 WebView 定时回收，周期: ${this.recycleIntervalMs}ms`)
+  }
+
+  /**
+   * 停止 WebView 回收定时器
+   */
+  private stopRecycleTimer() {
+    if (this.recycleTimerId !== undefined) {
+      clearInterval(this.recycleTimerId)
+      this.recycleTimerId = undefined
+      console.info('RSSArticleDetail', '已停止 WebView 定时回收')
+    }
+  }
+
+  /**
+   * 回收（销毁并重新创建）WebView
+   */
+  private recycleWebView() {
+    try {
+      // 先尝试清理并加载空白页，进一步释放内存
+      try {
+        this.webController.loadUrl('about:blank')
+      } catch (e) {
+        console.warn('RSSArticleDetail', '加载空白页失败，继续回收流程:', e)
+      }
+
+      // 重新创建 WebViewController
+      const destroyableController = this.webController as WebviewDestroyable
+      if (typeof destroyableController.destroy === 'function') {
+        // 若 API 支持 destroy 则优先调用
+        destroyableController.destroy()
+      }
+
+      this.webController = new webview.WebviewController()
+      this.isWebViewReady = false
+
+      console.info('RSSArticleDetail', 'WebView 已回收并重新创建')
+
+      // 如果当前有选中文章，则在控制器附加后自动加载文章
+      // onControllerAttached 中已有相应逻辑，这里无需额外处理
+    } catch (error) {
+      console.error('RSSArticleDetail', '回收 WebView 失败:', error)
     }
   }
 
