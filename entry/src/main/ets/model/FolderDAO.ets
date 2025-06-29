@@ -18,6 +18,13 @@ export interface RSSFolderDB {
 }
 
 /**
+ * 扩展文件夹接口，包含未读数量
+ */
+export interface RSSFolderWithUnread extends RSSFolderDB {
+  unreadCount: number
+}
+
+/**
  * 创建文件夹时的数据结构
  */
 export interface RSSFolderCreateData {
@@ -84,6 +91,61 @@ export class FolderDAO {
       return folders
     } catch (error) {
       hilog.error(0x0000, 'FolderDAO', '获取文件夹列表失败: %{public}s', JSON.stringify(error) ?? '')
+      throw new Error('获取文件夹列表失败')
+    }
+  }
+
+  /**
+   * 获取所有文件夹及对应未读文章数量
+   */
+  static async getAllFoldersWithUnreadCounts(includeInactive: boolean = false): Promise<RSSFolderWithUnread[]> {
+    const store = DatabaseManager.getStore()
+    if (!store) {
+      throw new Error('数据库未初始化')
+    }
+
+    try {
+      let sql = `
+        SELECT fldr.*, COALESCE((
+          SELECT COUNT(*)
+          FROM articles a
+          LEFT JOIN statuses s ON a.articleID = s.articleID
+          LEFT JOIN feeds fd ON fd.id = a.feedID
+          WHERE fd.folder_id = fldr.id AND (s.read IS NULL OR s.read = 0)
+        ), 0) as unread_count
+        FROM folders fldr`
+
+      const params: SQLParams = []
+      if (!includeInactive) {
+        sql += ' WHERE fldr.is_active = 1'
+      }
+      sql += ' ORDER BY fldr.sort_order ASC, fldr.name ASC'
+
+      const resultSet = await store.querySql(sql, params)
+      const folders: RSSFolderWithUnread[] = []
+
+      if (resultSet.rowCount > 0) {
+        resultSet.goToFirstRow()
+        do {
+          const folder: RSSFolderWithUnread = {
+            id: resultSet.getLong(resultSet.getColumnIndex('id')),
+            name: resultSet.getString(resultSet.getColumnIndex('name')),
+            description: resultSet.getString(resultSet.getColumnIndex('description')) || '',
+            icon: resultSet.getString(resultSet.getColumnIndex('icon')) || '',
+            color: resultSet.getString(resultSet.getColumnIndex('color')) || '',
+            sortOrder: resultSet.getLong(resultSet.getColumnIndex('sort_order')),
+            isActive: resultSet.getLong(resultSet.getColumnIndex('is_active')) === 1,
+            createdAt: resultSet.getString(resultSet.getColumnIndex('created_at')),
+            updatedAt: resultSet.getString(resultSet.getColumnIndex('updated_at')),
+            unreadCount: resultSet.getLong(resultSet.getColumnIndex('unread_count'))
+          }
+          folders.push(folder)
+        } while (resultSet.goToNextRow())
+      }
+      resultSet.close()
+      return folders
+    } catch (error) {
+      hilog.error(0x0000, 'FolderDAO', '获取带未读数量的文件夹列表失败: %{public}s', JSON.stringify(error) ?? '')
       throw new Error('获取文件夹列表失败')
     }
   }

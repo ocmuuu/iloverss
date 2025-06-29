@@ -3,7 +3,7 @@ import RSSRefreshService from '../service/RSSRefreshService'
 import relationalStore from '@ohos.data.relationalStore'
 import { DatabaseManager } from '../model/DatabaseManager'
 import type { RSSFeedDB } from '../model/FeedDAO'
-import { FeedDAO } from '../model/FeedDAO'
+import { FeedDAO, type RSSFeedCreateData } from '../model/FeedDAO'
 import type { RSSFolderDB } from '../model/FolderDAO'
 import { FolderDAO } from '../model/FolderDAO'
 import pasteboard from '@ohos.pasteboard'
@@ -11,38 +11,8 @@ import { FaviconDownloader } from '../utils/FaviconDownloader'
 import RSSService from '../service/RSSService'
 import { ParsedFeed } from '../utils/feed/ParsedFeed'
 import { common } from '@kit.AbilityKit'
-import http from '@ohos.net.http'
-import { FeedParser } from '../utils/feed/FeedParser'
-import { ParserData } from '../utils/feed/ParserData'
-
-// 扩展的文件夹接口，包含未读数量
-interface RSSFolderWithUnread extends RSSFolderDB {
-  unreadCount: number
-}
-
-interface RSSFeedWithUnread {
-  id: number
-  folderId: number | null
-  url: string
-  title: string
-  description: string
-  link: string
-  language: string
-  lastBuildDate: string
-  imageUrl: string
-  category: string
-  isActive: boolean
-  sortOrder: number
-  createdAt: string
-  updatedAt: string
-  lastFetchAt: string
-  errorCount: number
-  lastError: string
-  unreadCount: number
-  favicon?: Resource | string // 添加favicon属性
-  faviconPath?: string | null // 自定义图标路径
-
-}
+import { FeedDataService, type RSSFeedWithUnread } from '../service/FeedDataService'
+import type { RSSFolderWithUnread } from '../model/FolderDAO'
 
 @Component
 export struct RSSFeedList {
@@ -195,54 +165,11 @@ export struct RSSFeedList {
   // 加载未读数量
   private async loadUnreadCounts() {
     try {
-      const store = DatabaseManager.getStore()
-      if (!store) {
-        return
-      }
+      const counts = await FeedDataService.loadUnreadCounts()
+      this.todayUnreadCount = counts.today
+      this.favoriteUnreadCount = counts.favorites
+      this.totalUnreadCount = counts.total
 
-      // 先检查数据库状态
-      const dbStatus = await DatabaseManager.checkDatabaseStatus()
-      if (!dbStatus) {
-        return
-      }
-
-      // 1. 今天的未读文章数量
-      const todaySql = `
-        SELECT COUNT(*) as count 
-        FROM articles a 
-        LEFT JOIN statuses s ON a.articleID = s.articleID 
-        WHERE DATE(a.datePublished) = DATE('now', 'localtime') 
-        AND (s.read IS NULL OR s.read = 0)
-      `
-      const todayResult = await store.querySql(todaySql)
-      todayResult.goToFirstRow()
-      this.todayUnreadCount = todayResult.getLong(todayResult.getColumnIndex('count'))
-      todayResult.close()
-
-      // 2. 收藏的未读文章数量
-      const favoriteSql = `
-        SELECT COUNT(*) as count 
-        FROM articles a 
-        LEFT JOIN statuses s ON a.articleID = s.articleID 
-        WHERE s.starred = 1 AND (s.read IS NULL OR s.read = 0)
-      `
-      const favoriteResult = await store.querySql(favoriteSql)
-      favoriteResult.goToFirstRow()
-      this.favoriteUnreadCount = favoriteResult.getLong(favoriteResult.getColumnIndex('count'))
-      favoriteResult.close()
-
-      // 3. 全部未读文章数量
-      const totalSql = `
-        SELECT COUNT(*) as count 
-        FROM articles a 
-        LEFT JOIN statuses s ON a.articleID = s.articleID 
-        WHERE (s.read IS NULL OR s.read = 0)
-      `
-      const totalResult = await store.querySql(totalSql)
-      totalResult.goToFirstRow()
-      this.totalUnreadCount = totalResult.getLong(totalResult.getColumnIndex('count'))
-      totalResult.close()
-      
       // 调用静默更新方法来更新特殊标签显示
       this.updateSpecialFeedsUnreadCountsSilently()
     } catch (error) {
@@ -250,7 +177,7 @@ export struct RSSFeedList {
       this.todayUnreadCount = 0
       this.favoriteUnreadCount = 0
       this.totalUnreadCount = 0
-      
+
       // 即使查询失败，也要更新特殊标签显示
       this.updateSpecialFeedsUnreadCountsSilently()
     }
@@ -259,76 +186,7 @@ export struct RSSFeedList {
   async loadFeeds() {
     try {
       this.error = null
-
-      // 检查数据库管理器状态
-      const store = DatabaseManager.getStore()
-      if (!store) {
-        return
-      }
-
-      // 先检查数据库状态，确保表已创建
-      const dbStatus = await DatabaseManager.checkDatabaseStatus()
-      if (!dbStatus) {
-        return
-      }
-
-      // 查询所有活跃的RSS源及其未读数量
-      const sql = `
-        SELECT f.*, 
-               COALESCE((
-                 SELECT COUNT(*) 
-                 FROM articles a 
-                 LEFT JOIN statuses s ON a.articleID = s.articleID 
-                 WHERE a.feedID = f.id AND (s.read IS NULL OR s.read = 0)
-               ), 0) as unread_count
-        FROM feeds f 
-        WHERE f.is_active = 1 
-        ORDER BY f.sort_order ASC, f.title ASC
-      `
-      const resultSet = await store.querySql(sql)
-      
-      const feeds: RSSFeedWithUnread[] = []
-      if (resultSet.rowCount > 0) {
-        resultSet.goToFirstRow()
-        do {
-          const folderIdIndex = resultSet.getColumnIndex('folder_id')
-          let folderId: number | null = null
-          try {
-            if (!resultSet.isColumnNull(folderIdIndex)) {
-              folderId = resultSet.getLong(folderIdIndex)
-            }
-          } catch (err) {
-            folderId = null
-          }
-          
-          const feed: RSSFeedWithUnread = {
-            id: resultSet.getLong(resultSet.getColumnIndex('id')),
-            folderId: folderId,
-            url: resultSet.getString(resultSet.getColumnIndex('url')),
-            title: resultSet.getString(resultSet.getColumnIndex('title')),
-            description: resultSet.getString(resultSet.getColumnIndex('description')) || '',
-            link: resultSet.getString(resultSet.getColumnIndex('link')) || '',
-            language: resultSet.getString(resultSet.getColumnIndex('language')) || '',
-            lastBuildDate: resultSet.getString(resultSet.getColumnIndex('last_build_date')) || '',
-            imageUrl: resultSet.getString(resultSet.getColumnIndex('image_url')) || '',
-            category: resultSet.getString(resultSet.getColumnIndex('category')) || '',
-            isActive: resultSet.getLong(resultSet.getColumnIndex('is_active')) === 1,
-            sortOrder: resultSet.getLong(resultSet.getColumnIndex('sort_order')),
-            createdAt: resultSet.getString(resultSet.getColumnIndex('created_at')),
-            updatedAt: resultSet.getString(resultSet.getColumnIndex('updated_at')),
-            lastFetchAt: resultSet.getString(resultSet.getColumnIndex('last_fetch_at')),
-            errorCount: resultSet.getLong(resultSet.getColumnIndex('error_count')),
-            lastError: resultSet.getString(resultSet.getColumnIndex('last_error')),
-            unreadCount: resultSet.getLong(resultSet.getColumnIndex('unread_count')),
-            favicon: $r("app.media.rss"),
-            faviconPath: resultSet.getString(resultSet.getColumnIndex('favicon_path'))
-          }
-          feeds.push(feed)
-        } while (resultSet.goToNextRow())
-      }
-      resultSet.close()
-
-      this.feeds = feeds
+      this.feeds = await FeedDataService.loadFeeds()
     } catch (error) {
       if (error instanceof Error) {
         this.error = error.message
@@ -340,26 +198,7 @@ export struct RSSFeedList {
 
   async loadFolders() {
     try {
-      const dbFolders = await FolderDAO.getAllFolders()
-      
-      // 转换为带未读数量的文件夹对象
-      const folders: RSSFolderWithUnread[] = dbFolders.map(folder => {
-        const folderWithUnread: RSSFolderWithUnread = {
-          id: folder.id,
-          name: folder.name,
-          description: folder.description,
-          icon: folder.icon,
-          color: folder.color,
-          sortOrder: folder.sortOrder,
-          isActive: folder.isActive,
-          createdAt: folder.createdAt,
-          updatedAt: folder.updatedAt,
-          unreadCount: 0 // 初始化为0，后续会被更新
-        }
-        return folderWithUnread
-      })
-      
-      this.folders = folders
+      this.folders = await FeedDataService.loadFolders()
     } catch (error) {
       // 即使文件夹加载失败，也不影响RSS源的显示
       this.folders = []
@@ -693,62 +532,24 @@ export struct RSSFeedList {
 
   // 执行添加订阅
   async performAddSubscription(url: string) {
-    const store = DatabaseManager.getStore()
-    if (!store) {
-      throw new Error('数据库未初始化')
-    }
-
     // 验证URL格式
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       throw new Error('请输入有效的URL（需要以http://或https://开头）')
     }
 
-    // 检查是否已存在相同的URL
-    const existingResultSet = await store.querySql('SELECT id FROM feeds WHERE url = ?', [url])
-    if (existingResultSet.rowCount > 0) {
-      existingResultSet.close()
-      throw new Error('该RSS源已存在')
-    }
-    existingResultSet.close()
-
-    // 插入新的RSS源
-    const currentTime = new Date().toISOString()
-    const insertResult = await store.executeSql(`
-      INSERT INTO feeds (
-        folder_id, url, title, description, link, language, 
-        last_build_date, image_url, category, is_active, sort_order,
-        created_at, updated_at, last_fetch_at, error_count, last_error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      null, // folder_id - 添加到根目录
-      url,
-      url, // 临时使用URL作为标题，后续刷新时会更新
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      1, // is_active
-      0, // sort_order
-      currentTime,
-      currentTime,
-      '',
-      0,
-      ''
-    ])
-    
-    // 获取新添加的FEED ID
-    const newFeedResultSet = await store.querySql('SELECT id FROM feeds WHERE url = ?', [url])
-    let newFeedId: number = 0
-    if (newFeedResultSet.rowCount > 0) {
-      newFeedResultSet.goToFirstRow()
-      newFeedId = newFeedResultSet.getLong(0)
-      newFeedResultSet.close()
-    } else {
-      newFeedResultSet.close()
-      throw new Error('无法获取新添加的RSS源ID')
-    }
+    // 通过DAO添加新订阅源，DAO层会处理URL重复检查
+    const newFeedId = await FeedDAO.addFeed({
+      url: url,
+      title: url, // 临时标题，后续刷新更新
+      description: '',
+      link: '',
+      language: '',
+      lastBuildDate: '',
+      imageUrl: '',
+      category: '',
+      isActive: true,
+      sortOrder: 0
+    })
 
     // 显示刷新进度
     this.refreshProgress = `正在获取RSS源内容: ${url}`
@@ -786,108 +587,39 @@ export struct RSSFeedList {
 
   // 执行添加文件夹
   async performAddFolder(name: string) {
-    const store = DatabaseManager.getStore()
-    if (!store) {
-      throw new Error('数据库未初始化')
-    }
+    try {
+      // DAO 内部会检查重名并抛出错误
+      await FolderDAO.createFolder({ name })
 
-    // 检查是否已存在相同名称的文件夹
-    const existingResultSet = await store.querySql('SELECT id FROM folders WHERE name = ?', [name])
-    if (existingResultSet.rowCount > 0) {
-      existingResultSet.close()
-      throw new Error('该文件夹名称已存在')
-    }
-    existingResultSet.close()
+      // 重新加载文件夹数据
+      await this.loadFolders()
 
-    // 插入新的文件夹
-    const currentTime = new Date().toISOString()
-    await store.executeSql(`
-      INSERT INTO folders (name, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?)
-    `, [name, 0, currentTime, currentTime])
-    
-    // 重新加载数据
-    await this.loadFolders()
-    
-    // 递增UI更新触发器
-    this.uiUpdateTrigger++
+      // 触发 UI 更新
+      this.uiUpdateTrigger++
+    } catch (error) {
+      // ArkTS limited-throw 仅允许 Error 类型
+      if (error instanceof Error) {
+        throw error
+      } else {
+        throw new Error(String(error))
+      }
+    }
   }
 
   // 删除FEED及其相关数据
   async deleteFeed(feed: RSSFeedWithUnread) {
     try {
-      const store = DatabaseManager.getStore()
-      if (!store) {
-        throw new Error('数据库未初始化')
-      }
+      await FeedDataService.deleteFeed(feed.id)
 
-      // 不使用事务，逐步删除相关数据
-      try {
-        // 1. 先获取该FEED的所有文章ID
-        const articleResultSet = await store.querySql('SELECT articleID FROM articles WHERE feedID = ?', [feed.id])
-        const articleIds: string[] = []
-        
-        if (articleResultSet.rowCount > 0) {
-          articleResultSet.goToFirstRow()
-          do {
-            articleIds.push(articleResultSet.getString(0))
-          } while (articleResultSet.goToNextRow())
-        }
-        articleResultSet.close()
-
-        // 2. 逐个删除文章的相关数据
-        for (const articleId of articleIds) {
-          try {
-            // 删除状态信息
-            await store.executeSql('DELETE FROM statuses WHERE articleID = ?', [articleId])
-            
-            // 删除作者关联
-            await store.executeSql('DELETE FROM authorsarticles WHERE articleID = ?', [articleId])
-            
-            // 删除搜索记录
-            await store.executeSql('DELETE FROM search WHERE articleID = ?', [articleId])
-            
-            // 删除同步状态
-            await store.executeSql('DELETE FROM syncstatus WHERE articleID = ?', [articleId])
-            
-            // 删除附件
-            await store.executeSql('DELETE FROM attachments WHERE articleID = ?', [articleId])
-          } catch (error) {
-            // 继续删除其他文章的数据
-          }
-        }
-
-        // 3. 删除该FEED的所有文章
-        await store.executeSql('DELETE FROM articles WHERE feedID = ?', [feed.id])
-
-        // 4. 删除该FEED的Hub信息
-        try {
-          await store.executeSql('DELETE FROM hubs WHERE feedID = ?', [feed.id])
-        } catch (error) {
-          // 继续删除
-        }
-
-        // 5. 最后删除FEED本身
-        await store.executeSql('DELETE FROM feeds WHERE id = ?', [feed.id])
-        
-        // 重新加载数据
+      // 重新加载数据
       await Promise.all([
         this.loadFeeds(),
         this.loadUnreadCounts()
       ])
-        
-        // 静默更新特殊标签的未读数量显示
-        this.updateSpecialFeedsUnreadCountsSilently()
-        
-      } catch (error) {
-        throw new Error(`删除FEED数据失败: ${error}`)
-      }
-      
+
+      this.updateSpecialFeedsUnreadCountsSilently()
     } catch (error) {
-      // 将错误信息显示在底部
       this.operationError = `删除失败: ${error}`
-      
-      // 3秒后自动清除错误信息
       setTimeout(() => {
         this.operationError = null
       }, 3000)
@@ -931,6 +663,7 @@ export struct RSSFeedList {
       this.updateSpecialFeedsUnreadCountsSilently()
       
     } catch (error) {
+      // ArkTS limited-throw 仅允许 Error 类型
       if (error instanceof Error) {
         throw error
       } else {
@@ -942,40 +675,9 @@ export struct RSSFeedList {
   // 静默更新feeds未读数量（不重新创建数组）
   private async updateFeedsUnreadCountsSilently(): Promise<void> {
     try {
-      const store = DatabaseManager.getStore()
-      if (!store) {
-        return
-      }
-
-      // 批量查询所有feeds的未读数量
       const feedIds = this.feeds.map(feed => feed.id)
       if (feedIds.length === 0) return
-
-      const placeholders = feedIds.map(() => '?').join(',')
-      const sql = `
-        SELECT f.id,
-               COALESCE((
-                 SELECT COUNT(*) 
-                 FROM articles a 
-                 LEFT JOIN statuses s ON a.articleID = s.articleID 
-                 WHERE a.feedID = f.id AND (s.read IS NULL OR s.read = 0)
-               ), 0) as unread_count
-        FROM feeds f 
-        WHERE f.id IN (${placeholders})
-      `
-      
-      const resultSet = await store.querySql(sql, feedIds)
-      const unreadCounts = new Map<number, number>()
-      
-      if (resultSet.rowCount > 0) {
-        resultSet.goToFirstRow()
-        do {
-          const feedId = resultSet.getLong(0)
-          const unreadCount = resultSet.getLong(1)
-          unreadCounts.set(feedId, unreadCount)
-        } while (resultSet.goToNextRow())
-      }
-      resultSet.close()
+      const unreadCounts = await FeedDataService.getFeedsUnreadCounts(feedIds)
 
       // 强制创建新的feeds数组来触发响应式更新
       const updatedFeeds: RSSFeedWithUnread[] = []
@@ -1124,8 +826,7 @@ export struct RSSFeedList {
         
         try {
           // 调用RSS刷新服务来更新FEED内容
-          await this.refreshSingleFeed(feed)
-          
+          await RSSRefreshService.refreshSingleFeed(feed.id)
         } catch (feedError) {
           // 继续刷新其他FEED
         }
@@ -1162,58 +863,6 @@ export struct RSSFeedList {
       }, 3000)
     } finally {
       // 不需要重置isLoading，因为我们没有设置它
-    }
-  }
-
-  // 获取或解析 RSS 数据
-  private async refreshSingleFeed(feed: RSSFeedWithUnread): Promise<void> {
-    const feedURL = feed.url || ''
-    if (!feedURL) {
-      console.warn('RSSFeedList', `RSS源 ${feed.title || '未知'} 缺少URL，跳过解析`)
-      return
-    }
-
-    try {
-      console.info('RSSFeedList', `开始解析RSS源: ${feed.title || feedURL}`)
-      
-      // 获取RSS内容
-      const httpRequest = http.createHttp()
-      const response = await new Promise<http.HttpResponse>((resolve, reject) => {
-        httpRequest.request(feedURL, {
-          method: http.RequestMethod.GET,
-          connectTimeout: 10000,
-          readTimeout: 10000,
-          header: {
-            'User-Agent': 'HarmonyOS RSS Reader/1.0'
-          }
-        }, (err, data) => {
-          httpRequest.destroy()
-          if (err) {
-            reject(err)
-          } else {
-            resolve(data)
-          }
-        })
-      })
-
-      if (response.responseCode === http.ResponseCode.OK) {
-        const xmlContent = response.result as string
-        const parserData = ParserData.create(xmlContent, feedURL)
-        const parsedData = await FeedParser.parse(parserData)
-        
-        if (parsedData) {
-          console.info('RSSFeedList', `RSS源解析成功: ${parsedData.title || feedURL}, 共 ${parsedData.items?.length || 0} 篇文章`)
-          
-          // 更新UI
-          await this.updateUnreadCountsSilently()
-        } else {
-          console.warn('RSSFeedList', `RSS源解析返回空数据: ${feedURL}`)
-        }
-      } else {
-        throw new Error(`HTTP请求失败: ${response.responseCode}`)
-      }
-    } catch (error) {
-      console.error('RSSFeedList', `RSS源解析失败 ${feedURL}:`, JSON.stringify(error))
     }
   }
 

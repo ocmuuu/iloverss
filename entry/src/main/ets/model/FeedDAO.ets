@@ -224,7 +224,7 @@ export class FeedDAO {
   /**
    * 添加新的RSS源
    */
-  static async addFeed(feed: RSSFeedCreateData): Promise<boolean> {
+  static async addFeed(feed: RSSFeedCreateData): Promise<number> {
     const store = DatabaseManager.getStore()
     if (!store) {
       throw new Error('数据库未初始化')
@@ -240,10 +240,11 @@ export class FeedDAO {
       const sql = `
         INSERT INTO feeds (
           url, title, description, link, language, last_build_date, 
-          image_url, category, is_active, sort_order, folder_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          image_url, category, is_active, sort_order, folder_id,
+          created_at, updated_at, error_count, last_error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL)
       `
-      
+
       await store.executeSql(sql, [
         feed.url,
         feed.title,
@@ -258,11 +259,16 @@ export class FeedDAO {
         feed.folderId || null
       ])
 
-      hilog.info(0x0000, 'FeedDAO', `RSS源添加成功: ${feed.title}`)
-      return true
+      const newFeed = await FeedDAO.getFeedByUrl(feed.url)
+      if (newFeed) {
+        hilog.info(0x0000, 'FeedDAO', `RSS源添加成功: ${newFeed.title}`)
+        return newFeed.id
+      } else {
+        throw new Error("添加RSS源后无法获取到新ID")
+      }
     } catch (error) {
       hilog.error(0x0000, 'FeedDAO', '添加RSS源失败: %{public}s', JSON.stringify(error) ?? '')
-      throw new Error('添加RSS源失败')
+      throw new Error(`添加RSS源失败: ${error.message}`)
     }
   }
 
