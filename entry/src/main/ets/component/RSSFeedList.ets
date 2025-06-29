@@ -259,6 +259,42 @@ export struct RSSFeedList {
     }
   }
 
+  // 刷新单个FEED
+  async refreshSingleFeed(feed: RSSFeedWithUnread) {
+    try {
+      // 清除之前的操作错误信息
+      this.operationError = null
+      
+      // 显示刷新进度
+      this.refreshProgress = `正在刷新: ${feed.title}`
+      
+      // 调用RSS刷新服务来更新FEED内容
+      await RSSRefreshService.refreshSingleFeed(feed.id)
+      
+      // 刷新完成后更新未读数量
+      await this.loadUnreadCounts()
+      
+      // 静默更新未读数量，确保UI正确显示
+      await this.updateUnreadCountsSilently()
+      
+      this.refreshProgress = `刷新完成: ${feed.title}`
+      
+      // 2秒后清除成功信息
+      setTimeout(() => {
+        this.refreshProgress = ''
+      }, 2000)
+      
+    } catch (error) {
+      this.refreshProgress = ''
+      this.operationError = `刷新失败: ${error}`
+      
+      // 3秒后自动清除错误信息
+      setTimeout(() => {
+        this.operationError = null
+      }, 3000)
+    }
+  }
+
   // 开始编辑文件夹名称
   startEditingFolder(folder: RSSFolderWithUnread) {
     this.editingFolderId = folder.id
@@ -379,6 +415,30 @@ export struct RSSFeedList {
       setTimeout(() => {
         this.operationError = null
       }, 3000)
+    }
+  }
+
+  // 移动文件夹到顶部
+  async moveFolderToTop(folder: RSSFolderWithUnread) {
+    try {
+      await FolderDAO.moveFolderToTop(folder.id)
+      await this.loadFolders() // 重新加载以更新UI
+      this.uiUpdateTrigger++
+    } catch (error) {
+      this.operationError = `移动失败: ${error}`
+      setTimeout(() => { this.operationError = null }, 3000)
+    }
+  }
+
+  // 移动文件夹到底部
+  async moveFolderToBottom(folder: RSSFolderWithUnread) {
+    try {
+      await FolderDAO.moveFolderToBottom(folder.id)
+      await this.loadFolders() // 重新加载以更新UI
+      this.uiUpdateTrigger++
+    } catch (error) {
+      this.operationError = `移动失败: ${error}`
+      setTimeout(() => { this.operationError = null }, 3000)
     }
   }
 
@@ -918,6 +978,14 @@ export struct RSSFeedList {
   @Builder
   createFeedContextMenu(feed: RSSFeedWithUnread) {
     Menu() {
+      // 刷新FEED
+      MenuItem({ 
+        content: "刷新"
+      })
+        .onClick(() => {
+          this.refreshSingleFeed(feed)
+        })
+
       // 复制FEED地址
       MenuItem({ 
         content: "复制FEED地址"
@@ -989,6 +1057,22 @@ export struct RSSFeedList {
       })
         .onClick(() => {
           this.deleteFolder(folder)
+        })
+
+      // 移到最上面
+      MenuItem({
+        content: "移到最上面"
+      })
+        .onClick(() => {
+          this.moveFolderToTop(folder)
+        })
+
+      // 移到最下面
+      MenuItem({
+        content: "移到最下面"
+      })
+        .onClick(() => {
+          this.moveFolderToBottom(folder)
         })
     }
   }

@@ -343,6 +343,60 @@ export class FolderDAO {
   }
 
   /**
+   * 移动文件夹到顶部
+   */
+  static async moveFolderToTop(folderId: number): Promise<void> {
+    const store = DatabaseManager.getStore()
+    if (!store) throw new Error('数据库未初始化')
+
+    try {
+      // 1. 获取当前最小的sort_order
+      const minOrderRes = await store.querySql('SELECT MIN(sort_order) as minOrder FROM folders')
+      let minOrder = 0
+      if (minOrderRes.rowCount > 0) {
+        minOrderRes.goToFirstRow()
+        minOrder = minOrderRes.getLong(0)
+      }
+      minOrderRes.close()
+
+      // 2. 更新指定文件夹的sort_order
+      const newSortOrder = minOrder - 1
+      await store.executeSql('UPDATE folders SET sort_order = ? WHERE id = ?', [newSortOrder, folderId])
+      hilog.info(0x0000, 'FolderDAO', `文件夹 ${folderId} 已移动到顶部`)
+    } catch (error) {
+      hilog.error(0x0000, 'FolderDAO', `移动文件夹到顶部失败: ${error}`)
+      throw new Error('移动文件夹到顶部失败')
+    }
+  }
+
+  /**
+   * 移动文件夹到底部
+   */
+  static async moveFolderToBottom(folderId: number): Promise<void> {
+    const store = DatabaseManager.getStore()
+    if (!store) throw new Error('数据库未初始化')
+
+    try {
+      // 1. 获取当前最大的sort_order
+      const maxOrderRes = await store.querySql('SELECT MAX(sort_order) as maxOrder FROM folders')
+      let maxOrder = 0
+      if (maxOrderRes.rowCount > 0) {
+        maxOrderRes.goToFirstRow()
+        maxOrder = maxOrderRes.getLong(0)
+      }
+      maxOrderRes.close()
+
+      // 2. 更新指定文件夹的sort_order
+      const newSortOrder = maxOrder + 1
+      await store.executeSql('UPDATE folders SET sort_order = ? WHERE id = ?', [newSortOrder, folderId])
+      hilog.info(0x0000, 'FolderDAO', `文件夹 ${folderId} 已移动到底部`)
+    } catch (error) {
+      hilog.error(0x0000, 'FolderDAO', `移动文件夹到底部失败: ${error}`)
+      throw new Error('移动文件夹到底部失败')
+    }
+  }
+
+  /**
    * 将ResultSet映射为文件夹对象
    */
   private static mapResultSetToFolder(resultSet: relationalStore.ResultSet): RSSFolderDB {
