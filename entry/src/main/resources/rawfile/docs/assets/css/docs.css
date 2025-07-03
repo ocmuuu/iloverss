@@ -1,0 +1,290 @@
+/* 爱读RSS 文档样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.4;
+    color: #333;
+    background-color: #f8f9fa;
+    padding: 20px;
+}
+
+.container {
+    width: 98%;
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    font-weight: 300;
+}
+
+.header p {
+    font-size: 1.1em;
+    opacity: 0.9;
+}
+
+.content {
+    padding: 15px;
+    padding-top: 0px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #2c3e50;
+    margin-bottom: 12px;
+}
+
+h1 {
+    font-size: 1.6em;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 4px;
+}
+
+h2 {
+    font-size: 1.3em;
+    margin-top: 15px;
+    color: #34495e;
+}
+
+h3 {
+    font-size: 1.1em;
+    margin-top: 12px;
+    color: #333;
+}
+
+h4 {
+    font-size: 1.0em;
+    margin-top: 10px;
+    color: #333;
+}
+
+p {
+    margin-bottom: 8px;
+    color: #333;
+    font-size: 16px;
+}
+
+ul, ol {
+    margin-bottom: 12px;
+    padding-left: 25px;
+}
+
+li {
+    margin-bottom: 3px;
+    color: #333;
+    font-size: 16px;
+}
+
+.feature-list {
+    list-style: none;
+    padding: 0;
+}
+
+.feature-list li {
+    margin-bottom: 4px;
+    padding: 0;
+    font-size: 16px;
+}
+
+.feature-list li:before {
+    content: "•";
+    color: #333;
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+.feature-list a {
+    color: #333;
+    text-decoration: none;
+}
+
+.feature-list a:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+.feature-list a:visited {
+    color: #333;
+}
+
+.feature-list a:active {
+    color: #333;
+}
+
+/* 保持原有的feature-list样式用于非导航列表 */
+.feature-list.features {
+    list-style: none;
+    padding: 0;
+}
+
+.feature-list.features li {
+    background: #f8f9fa;
+    margin-bottom: 6px;
+    padding: 8px;
+    border-left: 3px solid #667eea;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.feature-list.features li:before {
+    content: "✓";
+    color: #28a745;
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+.info-box {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 8px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.info-box.warning {
+    background: #f8f9fa;
+    border-color: #e9ecef;
+}
+
+.info-box.success {
+    background: #f8f9fa;
+    border-color: #e9ecef;
+}
+
+.info-box h4 {
+    margin-bottom: 6px;
+    color: #333;
+}
+
+.info-box.warning h4 {
+    color: #333;
+}
+
+.info-box.success h4 {
+    color: #333;
+}
+
+.info-box p {
+    margin-bottom: 6px;
+}
+
+.info-box ul, .info-box ol {
+    margin-bottom: 6px;
+}
+
+.info-box li {
+    margin-bottom: 2px;
+}
+
+.code-block {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 12px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    overflow-x: auto;
+    white-space: pre-line;
+    line-height: 1.3;
+}
+
+.button {
+    display: inline-block;
+    background: #667eea;
+    color: white;
+    padding: 12px 24px;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background 0.3s;
+    margin: 10px 5px;
+}
+
+.button:hover {
+    background: #5a67d8;
+}
+
+.button.secondary {
+    background: #6c757d;
+}
+
+.button.secondary:hover {
+    background: #5a6268;
+}
+
+.nav-links {
+    text-align: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+}
+
+.footer {
+    text-align: center;
+    padding: 20px;
+    background: #2c3e50;
+    color: white;
+    font-size: 0.9em;
+}
+
+.version-info {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 6px;
+    margin: 12px 0;
+    text-align: center;
+    color: #6c757d;
+}
+
+.screenshot {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    margin: 20px 0;
+}
+
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+    
+    .header {
+        padding: 20px;
+    }
+    
+    .header h1 {
+        font-size: 2em;
+    }
+    
+    .content {
+        padding: 20px;
+    }
+    
+    h1 {
+        font-size: 1.8em;
+    }
+    
+    h2 {
+        font-size: 1.5em;
+    }
+} 

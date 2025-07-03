@@ -1,0 +1,47 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "C:/App/iloverss.p12",
+          "storePassword": "0000001A924B492FE1E9ADB0C884F68FEA0A7E58AD901C283D665E60110BA3AB282D57AF9DE8FEB058DD",
+          "keyAlias": "iloverss",
+          "keyPassword": "0000001A406FEB493CE99FB394E782CB3100D6D4724412299E6F16380C8EBC4C2A2802E2711706706083",
+          "signAlg": "SHA256withECDSA",
+          "profile": "C:/App/iloverssRelease.p7b",
+          "certpath": "C:/App/iloverss.cer"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "5.0.5(17)",
+        "runtimeOS": "HarmonyOS",
+        "bundleName": "com.mznm.iloverss"
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}
