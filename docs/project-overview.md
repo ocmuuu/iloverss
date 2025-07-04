@@ -19,7 +19,7 @@
 - **架构模式**: Stage模式
 - **目标平台**: HarmonyOS NEXT 或 HarmonyOS 4.0+
 - **SDK版本**: 5.0.5(17)
-- **应用版本**: 1.0.3
+- **应用版本**: 1.1.2
 
 ### 核心技术组件
 - **RSS 解析引擎**: 支持 RSS 2.0、Atom 1.0、JSON Feed、RSS in JSON

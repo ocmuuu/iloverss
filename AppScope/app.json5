@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.mznm.iloverss",
     "vendor": "mznm",
-    "versionCode": 1100000,
-    "versionName": "1.1.0",
+    "versionCode": 1100002,
+    "versionName": "1.1.2",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

@@ -71,7 +71,7 @@
 - **HarmonyOS SDK**: 5.0.5(17)
 - **开发语言**: TypeScript/ArkTS
 - **架构模式**: Stage模式
-- **应用版本**: 1.0.3
+- **应用版本**: 1.1.2
 - **Bundle ID**: com.mznm.iloverss
 
 ### 数据库设计
