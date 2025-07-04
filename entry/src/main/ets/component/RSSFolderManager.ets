@@ -16,9 +16,6 @@ export struct RSSFolderManager {
     await this.loadFolders()
   }
 
-  /**
-   * 加载所有文件夹
-   */
   async loadFolders() {
     try {
       this.folders = await RSSDataService.getAllFolders()
@@ -27,9 +24,6 @@ export struct RSSFolderManager {
     }
   }
 
-  /**
-   * 加载指定文件夹下的订阅源
-   */
   async loadFeedsInFolder(folderId: string | null) {
     try {
       this.feedsInFolder = await RSSDataService.getFeedsByFolderId(folderId)
@@ -39,9 +33,6 @@ export struct RSSFolderManager {
     }
   }
 
-  /**
-   * 创建新文件夹
-   */
   async createFolder() {
     if (!this.newFolderName.trim()) {
       Toast.show('请输入文件夹名称')
@@ -72,7 +63,6 @@ export struct RSSFolderManager {
 
   build() {
     Column() {
-      // 标题栏
       Row() {
         Text('文件夹管理')
           .fontSize(20)
@@ -92,9 +82,7 @@ export struct RSSFolderManager {
 
       Divider()
 
-      // 文件夹列表
       List() {
-        // 未分类项
         ListItem() {
           Row() {
             Image($r('app.media.rss'))
@@ -126,11 +114,9 @@ export struct RSSFolderManager {
           this.loadFeedsInFolder(null)
         })
 
-        // 文件夹列表
         ForEach(this.folders, (folder: RSSFolder) => {
           ListItem() {
             Row() {
-              // 文件夹图标
               Text('📁')
                 .fontSize(20)
                 .margin({ right: 12 })
@@ -171,7 +157,6 @@ export struct RSSFolderManager {
       .divider({ strokeWidth: 1, color: '#f0f0f0' })
       .flexGrow(1)
 
-      // 选中文件夹的内容
       if (this.selectedFolderId !== null || this.feedsInFolder.length > 0) {
         Divider()
         

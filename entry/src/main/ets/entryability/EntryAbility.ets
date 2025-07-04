@@ -7,6 +7,7 @@ import PreferencesUtil from '../utils/PreferencesUtil';
 import { DatabaseManager } from '../model/DatabaseManager';
 import RSSRefreshService from '../service/RSSRefreshService';
 import { ImageCacheService } from '../service/ImageCacheService';
+import { GlobalState } from '../model/GlobalState';
 import type common from '@ohos.app.ability.common';
 
 /**
@@ -79,6 +80,14 @@ export default class EntryAbility extends UIAbility {
         hilog.info(0x0000, 'testTag', '图片缓存清理任务已启动')
       } catch (error) {
         hilog.warn(0x0000, 'testTag', '清理过期图片缓存失败: %{public}s', JSON.stringify(error) ?? '')
+      }
+
+      // 初始化全局状态管理
+      try {
+        GlobalState.init()
+        hilog.info(0x0000, 'testTag', 'GlobalState initialized successfully')
+      } catch (error) {
+        hilog.error(0x0000, 'testTag', '初始化全局状态管理失败: %{public}s', JSON.stringify(error) ?? '')
       }
       
       // 标记初始化完成

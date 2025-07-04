@@ -3,30 +3,101 @@ import { RSSFeedList } from '../component/RSSFeedList'
 import RSSArticleList from '../component/RSSArticleList'
 import RSSArticleDetail from '../component/RSSArticleDetail'
 import PreferencesUtil from '../utils/PreferencesUtil'
+import { GlobalState } from '../model/GlobalState'
 
 @Entry
 @Component
 struct Index {
   @State selectedFeed: RSSFeed | undefined = undefined
   @State selectedArticle: RSSArticle | undefined = undefined
-  @State isFirstColumnCollapsed: boolean = false // 控制第一栏折叠状态
   @State isInitialized: boolean = false // 标记是否已初始化
   @State @Watch('onRefreshTriggerChanged') refreshTrigger: number = 0 // 用于触发列表刷新
+
+  // 监听全局选中的RSS源ID变化
+  @StorageLink('selectedFeedId') @Watch('onGlobalFeedChanged') globalSelectedFeedId: string = ''
+  // 全局状态监听
+  @StorageLink('selectedArticleId') @Watch('onGlobalArticleChanged') globalSelectedArticleId: string = ''
+  @StorageLink('currentArticleIndex') @Watch('onGlobalIndexChanged') globalCurrentIndex: number = -1
+  @StorageLink('isFirstColumnCollapsed') isFirstColumnCollapsed: boolean = false // 控制第一栏折叠状态
   
   // RSS源列表组件的引用，用于更新未读计数
   private rssFeelListRef: RSSFeedList | undefined = undefined
   // 文章列表组件的引用，用于刷新文章列表
   private rssArticleListRef: RSSArticleList | undefined = undefined
 
+  /**
+   * 监听全局选中的RSS源变化
+   */
+  async onGlobalFeedChanged() {
+    console.info('Index', `全局选中RSS源变化: ${this.globalSelectedFeedId}`)
+
+    // 如果有选中的RSS源ID
+    if (this.globalSelectedFeedId) {
+      try {
+        // 优先从数据库获取完整的RSS源数据
+        const feeds = await RSSDataService.getAllFeeds()
+        const targetFeed = feeds.find(feed => feed.id === this.globalSelectedFeedId)
+        if (targetFeed) {
+          this.selectedFeed = targetFeed
+          // 同步到列表组件的高亮状态
+          if (this.rssFeelListRef) {
+            this.rssFeelListRef.setSelectedFeed(targetFeed.id)
+          }
+          // 保存到首选项
+          if (PreferencesUtil.isInitialized()) {
+            PreferencesUtil.saveSelectedFeedIdSync(targetFeed.id)
+          }
+          return
+        }
+      } catch (error) {
+        console.error('Index', '根据ID加载RSS源失败，尝试使用mock数据:', JSON.stringify(error))
+      }
+
+      // 数据库查询失败时，先尝试降级到mock数据
+      const mockFeed = mockRSSFeeds.find(feed => feed.id === this.globalSelectedFeedId)
+      if (mockFeed) {
+        this.selectedFeed = mockFeed
+        if (this.rssFeelListRef) {
+          this.rssFeelListRef.setSelectedFeed(mockFeed.id)
+        }
+      } else {
+        // 进一步检查是否为特殊标签（今天/收藏/全部未读）
+        const specialFeed = this.getSpecialFeedById(this.globalSelectedFeedId)
+        if (specialFeed) {
+          this.selectedFeed = specialFeed
+          if (this.rssFeelListRef) {
+            this.rssFeelListRef.setSelectedFeed(specialFeed.id)
+          }
+        }
+      }
+    } else {
+      // 如果全局选中ID为空，清空本地状态
+      this.selectedFeed = undefined
+      this.selectedArticle = undefined
+    }
+
+    // 切换RSS源后，刷新文章列表
+    if (this.rssArticleListRef) {
+      this.rssArticleListRef.loadArticles()
+    }
+  }
+
   // 记录列宽度的状态，支持拖拽调整
   @State firstColumnWidth: number = 250      // 第一栏宽度（默认250）
   @State secondColumnWidth: number = 310     // 第二栏宽度（默认310）
 
-  // 处理订阅源点击的回调
-  onFeedClick = (feed: RSSFeed) => {
+  // 所有回调函数已移除，使用全局状态管理：
+  // onFeedClick → GlobalState.selectFeed()
+  // onArticleClick → GlobalState.selectArticle()
+  // onArticleReadStatusChanged → GlobalState.updateArticleReadStatus()
+  // onToggleFirstColumn → GlobalState.toggleFirstColumn()
+  
+  // 处理订阅源点击（现在监听全局状态变化）
+  onFeedSelection = (feed: RSSFeed) => {
     this.selectedFeed = feed
     // 重置选中的文章
     this.selectedArticle = undefined
+    
     // 同步RSS源列表的选中状态
     if (this.rssFeelListRef) {
       this.rssFeelListRef.setSelectedFeed(feed.id)
@@ -34,31 +105,6 @@ struct Index {
     // 同步保存当前选中的RSS源ID（先检查是否已初始化）
     if (PreferencesUtil.isInitialized()) {
       PreferencesUtil.saveSelectedFeedIdSync(feed.id)
-    }
-  }
-
-  // 处理文章点击的回调
-  onArticleClick = async (article: RSSArticle) => {
-    this.selectedArticle = article
-    // 标记文章为已读的逻辑已移动到下面的onArticleReadStatusChanged回调中
-  }
-
-  // 处理文章已读状态改变的回调
-  onArticleReadStatusChanged = async () => {
-    // 通知RSS源列表更新未读计数
-    if (this.rssFeelListRef) {
-      await this.rssFeelListRef.refreshUnreadCounts()
-    } else {
-      console.error('Index', 'rssFeelListRef 为空，无法刷新RSS源未读数量')
-    }
-  }
-
-  // 处理折叠按钮点击的回调
-  onToggleFirstColumn = () => {
-    this.isFirstColumnCollapsed = !this.isFirstColumnCollapsed
-    // 同步保存折叠状态（先检查是否已初始化）
-    if (PreferencesUtil.isInitialized()) {
-      PreferencesUtil.saveFirstColumnCollapseStateSync(this.isFirstColumnCollapsed)
     }
   }
 
@@ -88,71 +134,94 @@ struct Index {
     }
   }
 
-  // 切换到上一篇文章
-  onPreviousArticle = async () => {
-    if (!this.rssArticleListRef) {
-      console.warn('Index', '文章列表引用为空，无法切换到上一篇')
-      return
-    }
-
-    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
-    if (currentIndex > 0) {
-      const previousArticle = await this.rssArticleListRef.setSelectedArticleByIndex(currentIndex - 1)
-      if (previousArticle) {
-        this.selectedArticle = previousArticle
-        console.info('Index', `切换到上一篇文章: ${previousArticle.title}`)
+  /**
+   * 监听全局选中文章变化
+   */
+  onGlobalArticleChanged() {
+    console.info('Index', `全局选中文章变化: ${this.globalSelectedArticleId}`)
+    
+    if (this.globalSelectedArticleId && this.rssArticleListRef) {
+      // 从文章列表中找到对应的文章
+      const articleList = this.rssArticleListRef.getCurrentArticleList()
+      const article = articleList.find(a => a.id === this.globalSelectedArticleId)
+      
+      if (article) {
+        this.selectedArticle = article
+        console.info('Index', `更新本地选中文章: ${article.title}`)
       }
+    } else if (!this.globalSelectedArticleId) {
+      // 如果全局选中文章ID为空，清除本地选中文章
+      this.selectedArticle = undefined
+      console.info('Index', '清除本地选中文章')
     }
   }
 
-  // 切换到下一篇文章
-  onNextArticle = async () => {
-    if (!this.rssArticleListRef) {
-      console.warn('Index', '文章列表引用为空，无法切换到下一篇')
-      return
-    }
-
-    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
-    const articleList = this.rssArticleListRef.getCurrentArticleList()
-    if (currentIndex >= 0 && currentIndex < articleList.length - 1) {
-      const nextArticle = await this.rssArticleListRef.setSelectedArticleByIndex(currentIndex + 1)
-      if (nextArticle) {
-        this.selectedArticle = nextArticle
-        console.info('Index', `切换到下一篇文章: ${nextArticle.title}`)
-      }
-    }
+  /**
+   * 监听全局文章索引变化
+   */
+  onGlobalIndexChanged() {
+    console.info('Index', `全局文章索引变化: ${this.globalCurrentIndex}`)
+    // 索引变化时，文章选择逻辑由RSSArticleList处理
+    // 这里只需要记录日志
   }
 
-  // 计算是否可以切换到上一篇
+  // 文章切换回调已移除，现在直接使用全局状态管理：
+  // onPreviousArticle → GlobalState.switchToPreviousArticle()
+  // onNextArticle → GlobalState.switchToNextArticle()
+
+  // 计算是否可以切换到上一篇（使用全局状态）
   private canGoPrevious(): boolean {
-    if (!this.rssArticleListRef) {
-      return false
-    }
-    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
+    const currentIndex = AppStorage.get<number>('currentArticleIndex') || -1
     return currentIndex > 0
   }
 
-  // 计算是否可以切换到下一篇
+  // 计算是否可以切换到下一篇（使用全局状态）
   private canGoNext(): boolean {
-    if (!this.rssArticleListRef) {
-      return false
-    }
-    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
-    const articleList = this.rssArticleListRef.getCurrentArticleList()
-    return currentIndex >= 0 && currentIndex < articleList.length - 1
+    const currentIndex = AppStorage.get<number>('currentArticleIndex') || -1
+    const totalArticles = AppStorage.get<number>('articleListTotal') || 0
+    return currentIndex >= 0 && currentIndex < totalArticles - 1
   }
 
-  // 获取下一篇文章
-  getNextArticle = (): RSSArticle | undefined => {
-    if (!this.rssArticleListRef) {
-      return undefined
+  // getNextArticle 方法已移除，现在使用 GlobalState.getNextArticle()
+
+  /**
+   * 根据特殊标签ID返回对应的 RSSFeed 对象
+   */
+  private getSpecialFeedById(id: string): RSSFeed | undefined {
+    switch (id) {
+      case 'today':
+        return {
+          id: 'today',
+          folderId: null,
+          title: '今天',
+          description: '今日文章',
+          url: '',
+          favicon: $r('app.media.today'),
+          unreadCount: 0
+        }
+      case 'favorites':
+        return {
+          id: 'favorites',
+          folderId: null,
+          title: '收藏',
+          description: '收藏的文章',
+          url: '',
+          favicon: $r('app.media.star'),
+          unreadCount: 0
+        }
+      case 'unread':
+        return {
+          id: 'unread',
+          folderId: null,
+          title: '全部未读',
+          description: '所有未读文章',
+          url: '',
+          favicon: $r('app.media.unread'),
+          unreadCount: 0
+        }
+      default:
+        return undefined
     }
-    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
-    const articleList = this.rssArticleListRef.getCurrentArticleList()
-    if (currentIndex >= 0 && currentIndex < articleList.length - 1) {
-      return articleList[currentIndex + 1]
-    }
-    return undefined
   }
 
   // 组件即将出现时的生命周期
@@ -195,8 +264,9 @@ struct Index {
         return
       }
 
-      // 恢复第一栏折叠状态
-      this.isFirstColumnCollapsed = PreferencesUtil.getFirstColumnCollapseStateSync()
+      // 恢复第一栏折叠状态并同步到全局状态
+      const savedCollapseState = PreferencesUtil.getFirstColumnCollapseStateSync()
+      GlobalState.setFirstColumnCollapsed(savedCollapseState)
       
       // 恢复选中的RSS源
       const savedFeedId = PreferencesUtil.getSelectedFeedIdSync()
@@ -259,7 +329,6 @@ struct Index {
       if (!this.isFirstColumnCollapsed) {
         Column() {
           RSSFeedList({ 
-            onFeedClick: this.onFeedClick,
             onRef: this.onRSSFeedListRef 
           })
         }
@@ -291,18 +360,12 @@ struct Index {
           if (this.selectedFeed != undefined) {
         RSSArticleList({ 
           selectedFeed: this.selectedFeed,
-          onArticleClick: this.onArticleClick,
-          onArticleReadStatusChanged: this.onArticleReadStatusChanged,
-          onToggleFirstColumn: this.onToggleFirstColumn,
               isFirstColumnCollapsed: this.isFirstColumnCollapsed,
               onRef: this.onRSSArticleListRef
             })
           } else {
             RSSArticleList({ 
               selectedFeed: undefined,
-              onArticleClick: this.onArticleClick,
-              onArticleReadStatusChanged: this.onArticleReadStatusChanged,
-              onToggleFirstColumn: this.onToggleFirstColumn,
               isFirstColumnCollapsed: this.isFirstColumnCollapsed,
               onRef: this.onRSSArticleListRef
         })
@@ -336,20 +399,14 @@ struct Index {
               selectedArticle: this.selectedArticle,
               refreshTrigger: $refreshTrigger,
               canGoPrevious: this.canGoPrevious(),
-              canGoNext: this.canGoNext(),
-              onPreviousArticle: this.onPreviousArticle,
-              onNextArticle: this.onNextArticle,
-              getNextArticle: this.getNextArticle
+              canGoNext: this.canGoNext()
             })
           } else {
             RSSArticleDetail({ 
               selectedArticle: undefined,
               refreshTrigger: $refreshTrigger,
               canGoPrevious: false,
-              canGoNext: false,
-              onPreviousArticle: this.onPreviousArticle,
-              onNextArticle: this.onNextArticle,
-              getNextArticle: this.getNextArticle
+              canGoNext: false
             })
           }
       }
