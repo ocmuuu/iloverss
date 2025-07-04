@@ -42,6 +42,7 @@ export default struct RSSArticleDetail {
   @Prop canGoNext: boolean = false // 是否可以切换到下一篇
   onPreviousArticle?: () => void // 切换到上一篇的回调
   onNextArticle?: () => void // 切换到下一篇的回调
+  getNextArticle?: () => RSSArticle | undefined // 获取下一篇文章的回调
 
   // 新增：加载失败重试控制
   @State private loadRetryCount: number = 0 // 当前重试次数
@@ -123,7 +124,7 @@ export default struct RSSArticleDetail {
       const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent)
       this.webController.loadUrl(dataUrl)
       
-      // 异步预抓图片并在缓存完成后替换 src
+      // 异步预抓图片并在缓存完成后替换 src，同时预缓存下一篇文章的图片
       this.prefetchImages(htmlContent)
       
       console.info('RSSArticleDetail', '重新加载 Web 内容完成')
@@ -369,11 +370,18 @@ export default struct RSSArticleDetail {
     }
 
     if (!imageCacheEnabled) {
-      console.info('RSSArticleDetail', '图片缓存已关闭，跳过图片预抓取')
+      console.info('RSSArticleDetail', '图片缓存已关闭，跳过当前文章图片预抓取')
+      // 即使图片缓存关闭，也要尝试预缓存下一篇文章的图片（如果用户后续开启了缓存功能）
+      try {
+        const context = getContext(this) as common.UIAbilityContext
+        this.prefetchNextArticleImages(context)
+      } catch (error) {
+        console.error('RSSArticleDetail', '无法获取应用上下文，跳过下一篇文章预缓存:', error)
+      }
       return
     }
 
-    console.info('RSSArticleDetail', '图片缓存已开启，开始预抓取图片')
+    console.info('RSSArticleDetail', '图片缓存已开启，开始预抓取当前文章图片')
 
     const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi
     let match: RegExpExecArray | null
@@ -387,12 +395,19 @@ export default struct RSSArticleDetail {
       return
     }
 
+    // 缓存当前文章的图片
+    const currentArticleImages: string[] = []
     while ((match = imgRegex.exec(html)) !== null) {
       const url = match[1]
       // 跳过 data: url
       if (url.startsWith('data:')) {
         continue
       }
+      currentArticleImages.push(url)
+    }
+
+    // 处理当前文章的图片
+    for (const url of currentArticleImages) {
       try {
         const local = await ImageCacheService.downloadAndCache(url, this.selectedArticle?.id || 'unknown', context)
         if (local) {
@@ -406,6 +421,84 @@ export default struct RSSArticleDetail {
       } catch (e) {
         console.error('RSSArticleDetail', '预抓图片失败:', e)
       }
+    }
+
+    console.info('RSSArticleDetail', `当前文章图片缓存完成，共处理 ${currentArticleImages.length} 张图片`)
+
+    // 当前文章图片缓存完成后，预缓存下一篇文章的图片
+    this.prefetchNextArticleImages(context)
+  }
+
+  /**
+   * 预缓存下一篇文章的图片（后台进行，不影响当前文章显示）
+   */
+  private async prefetchNextArticleImages(context: common.UIAbilityContext) {
+    try {
+      // 检查图片缓存是否启用
+      let imageCacheEnabled = false
+      try {
+        imageCacheEnabled = await PreferencesUtil.getImageCacheEnabled()
+      } catch (error) {
+        console.warn('RSSArticleDetail', '获取图片缓存设置失败，跳过下一篇文章预缓存:', error)
+        return
+      }
+
+      if (!imageCacheEnabled) {
+        console.info('RSSArticleDetail', '图片缓存已关闭，跳过下一篇文章预缓存')
+        return
+      }
+
+      // 检查是否有下一篇文章
+      if (!this.canGoNext || !this.getNextArticle) {
+        console.info('RSSArticleDetail', '没有下一篇文章或未提供获取下一篇文章的回调，跳过预缓存')
+        return
+      }
+
+      const nextArticle = this.getNextArticle()
+      if (!nextArticle) {
+        console.info('RSSArticleDetail', '获取下一篇文章失败，跳过预缓存')
+        return
+      }
+
+      console.info('RSSArticleDetail', `开始预缓存下一篇文章的图片: ${nextArticle.title}`)
+
+      // 提取下一篇文章的图片URL
+      const nextArticleContent = nextArticle.content || nextArticle.summary || ''
+      const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi
+      let match: RegExpExecArray | null
+      const nextArticleImages: string[] = []
+
+      while ((match = imgRegex.exec(nextArticleContent)) !== null) {
+        const url = match[1]
+        // 跳过 data: url
+        if (url.startsWith('data:')) {
+          continue
+        }
+        nextArticleImages.push(url)
+      }
+
+      if (nextArticleImages.length === 0) {
+        console.info('RSSArticleDetail', '下一篇文章没有图片，跳过预缓存')
+        return
+      }
+
+      console.info('RSSArticleDetail', `下一篇文章共有 ${nextArticleImages.length} 张图片，开始后台预缓存`)
+
+      // 后台缓存下一篇文章的图片（不阻塞当前操作）
+      setTimeout(async () => {
+        for (const url of nextArticleImages) {
+          try {
+            await ImageCacheService.downloadAndCache(url, nextArticle.id, context)
+            console.info('RSSArticleDetail', `下一篇文章图片预缓存成功: ${url}`)
+          } catch (e) {
+            console.warn('RSSArticleDetail', `下一篇文章图片预缓存失败: ${url}`, e)
+          }
+        }
+        console.info('RSSArticleDetail', `下一篇文章图片预缓存完成: ${nextArticle.title}`)
+      }, 500) // 延迟500ms开始，避免影响当前文章的显示
+
+    } catch (error) {
+      console.error('RSSArticleDetail', '预缓存下一篇文章图片失败:', error)
     }
   }
 

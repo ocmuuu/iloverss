@@ -142,6 +142,19 @@ struct Index {
     return currentIndex >= 0 && currentIndex < articleList.length - 1
   }
 
+  // 获取下一篇文章
+  getNextArticle = (): RSSArticle | undefined => {
+    if (!this.rssArticleListRef) {
+      return undefined
+    }
+    const currentIndex = this.rssArticleListRef.getCurrentArticleIndex()
+    const articleList = this.rssArticleListRef.getCurrentArticleList()
+    if (currentIndex >= 0 && currentIndex < articleList.length - 1) {
+      return articleList[currentIndex + 1]
+    }
+    return undefined
+  }
+
   // 组件即将出现时的生命周期
   async aboutToAppear() {
     try {
@@ -325,7 +338,8 @@ struct Index {
               canGoPrevious: this.canGoPrevious(),
               canGoNext: this.canGoNext(),
               onPreviousArticle: this.onPreviousArticle,
-              onNextArticle: this.onNextArticle
+              onNextArticle: this.onNextArticle,
+              getNextArticle: this.getNextArticle
             })
           } else {
             RSSArticleDetail({ 
@@ -334,7 +348,8 @@ struct Index {
               canGoPrevious: false,
               canGoNext: false,
               onPreviousArticle: this.onPreviousArticle,
-              onNextArticle: this.onNextArticle
+              onNextArticle: this.onNextArticle,
+              getNextArticle: this.getNextArticle
             })
           }
       }
