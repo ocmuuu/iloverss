@@ -34,6 +34,7 @@ export default struct RSSArticleDetail {
   @Link refreshTrigger: number
   @State private isWebViewReady: boolean = false
   @State private isLoadingArticle: boolean = false
+  @State private showHelp: boolean = false
 
   @Prop canGoPrevious: boolean = false
   @Prop canGoNext: boolean = false
@@ -108,6 +109,7 @@ export default struct RSSArticleDetail {
     try {
       this.isLoadingArticle = true
       this.loadRetryCount = 0
+      this.showHelp = false
       
       const htmlContent = this.generateOptimizedArticleHTML(this.selectedArticle)
       const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent)
@@ -299,7 +301,8 @@ export default struct RSSArticleDetail {
         return
       }
       
-      const helpUrl = 'resource://rawfile/docs/help/index.html'
+      this.showHelp = true
+      const helpUrl = 'resource://rawfile/docs/about/index.html'
       this.webController.loadUrl(helpUrl)
       this.currentArticleId = 'help_document'
       
@@ -487,7 +490,7 @@ export default struct RSSArticleDetail {
           .backgroundColor('rgba(255, 255, 255, 0.8)')
         }
 
-        if (!this.selectedArticle) {
+        if (!this.selectedArticle && !this.showHelp) {
           Column() {
             Image($r("app.media.rss"))
               .width(60)

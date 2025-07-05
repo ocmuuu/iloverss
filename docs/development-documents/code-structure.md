@@ -21,7 +21,7 @@ iloverss/
 ## 主要模块说明
 - **component/**：UI组件，负责界面展示和交互
 - **entryability/**：应用入口，生命周期管理
-- **model/**：数据模型和DAO
+- **model/**：数据模型、DAO及GlobalState状态管理
 - **pages/**：页面入口和路由
 - **service/**：业务逻辑和服务
 - **utils/**：工具类和通用方法
