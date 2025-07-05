@@ -216,6 +216,44 @@ export struct RSSFeedList {
     }
   }
 
+  /**
+   * 选择下一条订阅源（供键盘快捷键使用）
+   */
+  selectNextFeed() {
+    const allFeeds = [...this.specialFeeds, ...this.feeds]
+    if (allFeeds.length === 0) {
+      return
+    }
+
+    const currentIndex = allFeeds.findIndex(feed => String(feed.id) === String(this.selectedFeedId))
+    const nextIndex = (currentIndex + 1) % allFeeds.length
+    const nextFeed = allFeeds[nextIndex]
+    if (nextFeed) {
+      const nextId = String(nextFeed.id)
+      this.setSelectedFeed(nextId)
+      AppStorage.set('selectedFeedId', nextId)
+    }
+  }
+
+  /**
+   * 选择上一条订阅源（供键盘快捷键使用）
+   */
+  selectPreviousFeed() {
+    const allFeeds = [...this.specialFeeds, ...this.feeds]
+    if (allFeeds.length === 0) {
+      return
+    }
+
+    const currentIndex = allFeeds.findIndex(feed => String(feed.id) === String(this.selectedFeedId))
+    const prevIndex = (currentIndex - 1 + allFeeds.length) % allFeeds.length
+    const prevFeed = allFeeds[prevIndex]
+    if (prevFeed) {
+      const prevId = String(prevFeed.id)
+      this.setSelectedFeed(prevId)
+      AppStorage.set('selectedFeedId', prevId)
+    }
+  }
+
   setSelectedFeed(feedId: string | null) {
     this.selectedFeedId = feedId
   }
@@ -1172,7 +1210,7 @@ export struct RSSFeedList {
             }
             .onClick(() => {
               this.selectedFeedId = feed.id
-              GlobalState.selectFeed(feed.id)
+              AppStorage.set('selectedFeedId', feed.id)
             })
           }, (feed: RSSFeed) => `${feed.id}_${this.uiUpdateTrigger}`)
 
@@ -1365,7 +1403,7 @@ export struct RSSFeedList {
                 }
                 .onClick(() => {
                   this.selectedFeedId = feed.id.toString()
-                  GlobalState.selectFeed(feed.id.toString())
+                  AppStorage.set('selectedFeedId', feed.id.toString())
                 })
                 .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick)
               }, (feed: RSSFeedWithUnread) => `${folder.id}_${feed.id}_${this.uiUpdateTrigger}`)
@@ -1417,7 +1455,7 @@ export struct RSSFeedList {
             }
             .onClick(() => {
               this.selectedFeedId = feed.id.toString()
-              GlobalState.selectFeed(feed.id.toString())
+              AppStorage.set('selectedFeedId', feed.id.toString())
             })
             .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick)
           }, (feed: RSSFeedWithUnread) => `${feed.id.toString()}_${this.uiUpdateTrigger}`)

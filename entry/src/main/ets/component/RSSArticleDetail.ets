@@ -401,27 +401,12 @@ export default struct RSSArticleDetail {
       .backgroundColor("#f7f7f7")
       .border({ width: { bottom: 1 }, color: "#e0e0e0" })
 
-      if (this.selectedArticle && this.showKeyboardHints && this.keyboardEnabled) {
-        Row() {
-          Text('快捷键：M键切换已读 | S键切换收藏 | J/→下一篇 | K/←上一篇')
-            .fontSize(12)
-            .fontColor('#666666')
-            .textAlign(TextAlign.Center)
-            .maxLines(1)
-            .textOverflow({overflow: TextOverflow.Ellipsis})
-        }
-        .width('100%')
-        .height(24)
-        .justifyContent(FlexAlign.Center)
-        .backgroundColor('#f9f9f9')
-        .border({ width: { bottom: 1 }, color: '#e5e5e5' })
-      }
-
       Stack() {
         Web({ 
           src: '',
           controller: this.webController 
         })
+        .focusable(false)
         .width("100%")
         .height("100%")
         .backgroundColor('#ffffff')
@@ -504,7 +489,7 @@ export default struct RSSArticleDetail {
 
         if (!this.selectedArticle) {
           Column() {
-            Image($r("app.media.information"))
+            Image($r("app.media.rss"))
               .width(60)
               .height(60)
               .opacity(0.3)

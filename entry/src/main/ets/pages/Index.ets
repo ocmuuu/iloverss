@@ -4,6 +4,14 @@ import RSSArticleList from '../component/RSSArticleList'
 import RSSArticleDetail from '../component/RSSArticleDetail'
 import PreferencesUtil from '../utils/PreferencesUtil'
 import { GlobalState } from '../model/GlobalState'
+import type { KeyEvent } from '@ohos.multimodalInput.keyEvent'
+import { KeyCode } from '@ohos.multimodalInput.keyCode'
+
+// 简化的键盘事件接口（仅保留需要的字段）
+interface UIKeyEvent { type: number; keyCode: number; metaKey: number }
+
+// HarmonyOS 按键动作常量：0=Down，1=Up
+const KEY_TYPE_DOWN: number = 0
 
 @Entry
 @Component
@@ -19,11 +27,94 @@ struct Index {
   @StorageLink('selectedArticleId') @Watch('onGlobalArticleChanged') globalSelectedArticleId: string = ''
   @StorageLink('currentArticleIndex') @Watch('onGlobalIndexChanged') globalCurrentIndex: number = -1
   @StorageLink('isFirstColumnCollapsed') isFirstColumnCollapsed: boolean = false // 控制第一栏折叠状态
+
+  /**
+   * 切换第一栏折叠状态并持久化
+   */
+  toggleFirstColumn() {
+    const newState = !this.isFirstColumnCollapsed
+    this.isFirstColumnCollapsed = newState
+    GlobalState.setFirstColumnCollapsed(newState)
+  }
   
   // RSS源列表组件的引用，用于更新未读计数
   private rssFeelListRef: RSSFeedList | undefined = undefined
   // 文章列表组件的引用，用于刷新文章列表
   private rssArticleListRef: RSSArticleList | undefined = undefined
+
+  // 记录 Shift 是否按下
+  private shiftHeld: boolean = false
+
+  /**
+   * 处理键盘快捷键
+   * 键码使用与 RSSArticleDetail 相同的数值，避免依赖 KeyCode 枚举
+   */
+  // 统一的键盘事件处理 (使用 ESObject 动态属性，避免类型不匹配)
+  private handleKeyEvent(event: UIKeyEvent): boolean {
+    console.info('ShortcutLog', `KeyEvent received: code=${event.keyCode}, meta=${event.metaKey}`)
+    if (event.type !== KEY_TYPE_DOWN) {
+      return false // 只处理按下事件
+    }
+
+    const keyCode: number = (event as ESObject)["keyCode"] as number ?? -1
+    // 更新 Shift 状态：检测独立 Shift 键
+    if (event.keyCode === KeyCode.KEYCODE_SHIFT_LEFT || event.keyCode === KeyCode.KEYCODE_SHIFT_RIGHT) {
+      if (event.type === KEY_TYPE_DOWN) {
+        this.shiftHeld = true
+      } else {
+        this.shiftHeld = false
+      }
+      // Shift 自身事件可直接返回，不做其他处理
+      return false
+    }
+
+    const isShift: boolean = this.shiftHeld
+
+    switch (keyCode) {
+      case KeyCode.KEYCODE_J:        // 2026
+      case KeyCode.KEYCODE_DPAD_RIGHT: // 2022
+        GlobalState.switchToNextArticle()
+        break
+      case KeyCode.KEYCODE_K:        // 2027
+      case KeyCode.KEYCODE_DPAD_LEFT:  // 2021
+        GlobalState.switchToPreviousArticle()
+        break
+      case KeyCode.KEYCODE_M: // M 切换已读
+        if (this.selectedArticle) {
+          GlobalState.updateArticleReadStatus(this.selectedArticle.id, !this.selectedArticle.readStatus)
+        }
+        break
+      case KeyCode.KEYCODE_S: // S 收藏切换
+        if (this.selectedArticle) {
+          GlobalState.updateArticleStarStatus(this.selectedArticle.id, this.selectedArticle.starredStatus)
+        }
+        break
+      case KeyCode.KEYCODE_R: // R 刷新
+        GlobalState.triggerRefresh()
+        break
+      case KeyCode.KEYCODE_N: // N
+        if (isShift) {
+          this.rssFeelListRef?.selectNextFeed()
+        }
+        break
+      case KeyCode.KEYCODE_P: // P
+        if (isShift) {
+          this.rssFeelListRef?.selectPreviousFeed()
+        }
+        break
+      case KeyCode.KEYCODE_A: // A
+        if (isShift) {
+          this.rssArticleListRef?.markAllAsRead()
+        }
+        break
+      case KeyCode.KEYCODE_H: // H 切换第一栏折叠
+        this.toggleFirstColumn()
+        break
+      default:
+        break
+    }
+    return true // 处理了事件
+  }
 
   /**
    * 监听全局选中的RSS源变化
@@ -324,99 +415,104 @@ struct Index {
       .justifyContent(FlexAlign.Center)
       .backgroundColor("#f5f5f5")
     } else {
-    Row() {
-      // 第一栏：RSS订阅源列表（支持折叠）
-      if (!this.isFirstColumnCollapsed) {
-        Column() {
-          RSSFeedList({ 
-            onRef: this.onRSSFeedListRef 
-          })
+      Row() {
+        // 第一栏：RSS订阅源列表（支持折叠）
+        if (!this.isFirstColumnCollapsed) {
+          Column() {
+            RSSFeedList({
+              onRef: this.onRSSFeedListRef
+            })
+          }
+          .width(this.firstColumnWidth)
+          .height("100%")
+          .backgroundColor("#f8f9fa")
+          .transition(TransitionEffect.translate({ x: -this.firstColumnWidth })
+            .animation({ duration: 300, curve: Curve.EaseInOut }))
+
+          // 分割线
+          Divider()
+            .vertical(true)
+            .color("#e0e0e0")
+            .strokeWidth(3)// 分割线宽度
+            .gesture(
+              PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
+                .onActionUpdate((event: GestureEvent) => {
+                  let newFirstWidth = this.firstColumnWidth + event.offsetX
+                  newFirstWidth = Math.max(200, Math.min(300, newFirstWidth)) // 范围200-300
+                  this.firstColumnWidth = newFirstWidth
+                })
+                .onActionEnd(() => {
+                  PreferencesUtil.saveFirstColumnWidthSync(this.firstColumnWidth)
+                })
+            )
         }
-        .width(this.firstColumnWidth)
+
+        // 第二栏：文章列表
+        Column() {
+          if (this.selectedFeed != undefined) {
+            RSSArticleList({
+              selectedFeed: this.selectedFeed,
+              isFirstColumnCollapsed: this.isFirstColumnCollapsed,
+              onRef: this.onRSSArticleListRef
+            })
+          } else {
+            RSSArticleList({
+              selectedFeed: undefined,
+              isFirstColumnCollapsed: this.isFirstColumnCollapsed,
+              onRef: this.onRSSArticleListRef
+            })
+          }
+        }
+        .width(this.secondColumnWidth)
         .height("100%")
-        .backgroundColor("#f8f9fa")
-        .transition(TransitionEffect.translate({ x: -this.firstColumnWidth }).animation({ duration: 300, curve: Curve.EaseInOut }))
+        .backgroundColor("#ffffff")
 
         // 分割线
         Divider()
           .vertical(true)
           .color("#e0e0e0")
-          .strokeWidth(3) // 分割线宽度
+          .strokeWidth(3)
           .gesture(
             PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
               .onActionUpdate((event: GestureEvent) => {
-                let newFirstWidth = this.firstColumnWidth + event.offsetX
-                newFirstWidth = Math.max(200, Math.min(300, newFirstWidth)) // 范围200-300
-                this.firstColumnWidth = newFirstWidth
+                let newSecondWidth = this.secondColumnWidth + event.offsetX
+                newSecondWidth = Math.max(250, Math.min(400, newSecondWidth)) // 范围250-400
+                this.secondColumnWidth = newSecondWidth
               })
               .onActionEnd(() => {
-                PreferencesUtil.saveFirstColumnWidthSync(this.firstColumnWidth)
+                PreferencesUtil.saveSecondColumnWidthSync(this.secondColumnWidth)
               })
           )
-      }
 
-      // 第二栏：文章列表
-      Column() {
-          if (this.selectedFeed != undefined) {
-        RSSArticleList({ 
-          selectedFeed: this.selectedFeed,
-              isFirstColumnCollapsed: this.isFirstColumnCollapsed,
-              onRef: this.onRSSArticleListRef
-            })
-          } else {
-            RSSArticleList({ 
-              selectedFeed: undefined,
-              isFirstColumnCollapsed: this.isFirstColumnCollapsed,
-              onRef: this.onRSSArticleListRef
-        })
-          }
-      }
-      .width(this.secondColumnWidth)
-      .height("100%")
-      .backgroundColor("#ffffff")
-
-      // 分割线
-      Divider()
-        .vertical(true)
-        .color("#e0e0e0")
-        .strokeWidth(3)
-        .gesture(
-          PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
-            .onActionUpdate((event: GestureEvent) => {
-              let newSecondWidth = this.secondColumnWidth + event.offsetX
-              newSecondWidth = Math.max(250, Math.min(400, newSecondWidth)) // 范围250-400
-              this.secondColumnWidth = newSecondWidth
-            })
-            .onActionEnd(() => {
-              PreferencesUtil.saveSecondColumnWidthSync(this.secondColumnWidth)
-            })
-        )
-
-      // 第三栏：文章详情
-      Column() {
+        // 第三栏：文章详情
+        Column() {
           if (this.selectedArticle != undefined) {
-            RSSArticleDetail({ 
+            RSSArticleDetail({
               selectedArticle: this.selectedArticle,
               refreshTrigger: $refreshTrigger,
               canGoPrevious: this.canGoPrevious(),
               canGoNext: this.canGoNext()
             })
           } else {
-            RSSArticleDetail({ 
+            RSSArticleDetail({
               selectedArticle: undefined,
               refreshTrigger: $refreshTrigger,
               canGoPrevious: false,
               canGoNext: false
             })
           }
+        }
+        .layoutWeight(1)
+        .height("100%")
+        .backgroundColor("#ffffff")
       }
-      .layoutWeight(1)
-      .height("100%")
-      .backgroundColor("#ffffff")
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor("#e5e5e5")
+      .width('100%')
+      .height('100%')
+      .backgroundColor("#e5e5e5")
+      .focusable(true)
+      .onKeyEvent((event) => {
+         return this.handleKeyEvent(event as UIKeyEvent)
+      })
     }
   }
 }

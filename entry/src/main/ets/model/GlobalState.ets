@@ -1,4 +1,5 @@
 import { RSSDataService } from './RSSModel'
+import { PreferencesUtil } from '../utils/PreferencesUtil'
 
 /**
  * 简化的文章信息接口
@@ -333,25 +334,41 @@ export class GlobalState {
   /**
    * 切换第一栏折叠状态
    */
-  static toggleFirstColumn() {
+  private static toggleFirstColumnNoPersist() {
     const current = AppStorage.get<boolean>('isFirstColumnCollapsed') || false
     AppStorage.set('isFirstColumnCollapsed', !current)
     console.info('GlobalState', `切换第一栏折叠状态: ${!current}`)
   }
 
   /**
-   * 获取第一栏折叠状态
+   * 获取第一栏折叠状态（运行时）
    */
   static getFirstColumnCollapsed(): boolean {
-    return AppStorage.get<boolean>('isFirstColumnCollapsed') || false
+    return AppStorage.get<boolean>('isFirstColumnCollapsed') ?? false
   }
 
   /**
-   * 设置第一栏折叠状态
+   * 设置第一栏折叠状态，同时持久化到首选项
    */
-  static setFirstColumnCollapsed(collapsed: boolean) {
-    AppStorage.set('isFirstColumnCollapsed', collapsed)
-    console.info('GlobalState', `设置第一栏折叠状态: ${collapsed}`)
+  static setFirstColumnCollapsed(isCollapsed: boolean) {
+    AppStorage.set('isFirstColumnCollapsed', isCollapsed)
+    // 持久化
+    try {
+      // 使用同步方法，避免异步未完成就退出
+      // 此处直接调用会在未初始化时抛错，所以捕获
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      PreferencesUtil.saveFirstColumnCollapseStateSync(isCollapsed)
+    } catch (e) {
+      console.warn('GlobalState', '首选项未初始化或保存失败, err=', JSON.stringify(e))
+    }
+  }
+
+  /**
+   * 切换折叠状态（供旧代码调用）
+   */
+  static toggleFirstColumn() {
+    const current = AppStorage.get<boolean>('isFirstColumnCollapsed') ?? false
+    GlobalState.setFirstColumnCollapsed(!current)
   }
 
   /**
