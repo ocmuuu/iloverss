@@ -18,6 +18,9 @@ import type { RSSFolderWithUnread } from '../model/FolderDAO'
 import { OPMLService } from '../service/OPMLService'
 import PreferencesUtil from '../utils/PreferencesUtil'
 import { GlobalState } from '../model/GlobalState'
+import { ImageDAO } from '../model/ImageDAO'
+import { UrlHashUtil } from '../utils/UrlHashUtil'
+import fs from '@ohos.file.fs'
 
 @Component
 export struct RSSFeedList {
@@ -237,28 +240,13 @@ export struct RSSFeedList {
 
       for (const article of articles) {
         try {
-          // 从数据库读取完整内容
-          const full = await ArticleDAO.getArticleByID(article.id)
-          const html = (full && (full.contentText || full.summary)) ? (full.contentText || full.summary) : article.content || article.summary
+          // 直接读取 images 表
+          const pendingImages = (await ImageDAO.getImagesByArticleID(article.id))
+            .filter(img => !img.localPath)
 
-          // 提取图片 URL
-          const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi
-          let match: RegExpExecArray | null
-          while ((match = imgRegex.exec(html)) !== null) {
-            const url = match[1]
-            if (url.startsWith('data:')) {
-              continue
-            }
-
-            // 先检查是否已缓存
-            const cached = await ImageCacheService.getCachedPath(url, article.id, context)
-            if (cached) {
-              // console.info('FeedCache', `已存在缓存，跳过下载: ${url}`)
-              continue
-            }
-
+          for (const img of pendingImages) {
             try {
-              await ImageCacheService.downloadAndCache(url, article.id, context, true)
+              await ImageCacheService.ensureImageCached(img.url, article.id, context, true)
             } catch (_) {}
           }
         } catch (_) {}

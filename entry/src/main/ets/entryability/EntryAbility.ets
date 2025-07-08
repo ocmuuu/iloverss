@@ -26,7 +26,7 @@ export default class EntryAbility extends UIAbility {
       const dbInitialized = await DatabaseManager.init(this.context);
       if (dbInitialized) {
         hilog.info(0x0000, 'testTag', 'DatabaseManager initialized successfully');
-        
+
         // 验证默认RSS源是否已插入
         try {
             const store = DatabaseManager.getStore();

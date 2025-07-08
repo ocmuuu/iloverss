@@ -5,6 +5,8 @@ import ArticleDAO, { RSSArticleDB, RSSArticleCreateData } from '../model/Article
 import StatusDAO from '../model/StatusDAO'
 import AuthorDAO, { RSSAuthorCreateData } from '../model/AuthorDAO'
 import { DatabaseManager } from '../model/DatabaseManager'
+import { ImageDAO } from '../model/ImageDAO'
+import { UrlHashUtil } from '../utils/UrlHashUtil'
 // 使用新的feed解析器体系
 import { FeedParser, FeedParserError, FeedParserErrorType } from '../utils/feed/FeedParser'
 import { ParserData } from '../utils/feed/ParserData'
@@ -329,6 +331,22 @@ export class RSSService {
             if (item.authors && item.authors.length > 0) {
               await RSSService.saveAuthors(articleID, item.authors)
             }
+
+            // 提取并保存图片 URL
+            try {
+              const imgUrls = RSSService.extractImageUrls(item)
+              for (const imgUrl of imgUrls) {
+                const imageID = UrlHashUtil.generateImageId(imgUrl)
+                await ImageDAO.saveOrUpdateImage({
+                  articleID: articleID,
+                  imageID: imageID,
+                  url: imgUrl,
+                  localPath: '' // 初始为空，下载后填充
+                })
+              }
+            } catch (imgErr) {
+              hilog.warn(0x0000, 'RSSService', `提取图片失败: %{public}s`, JSON.stringify(imgErr) ?? '')
+            }
           } else {
             skipCount++
           }
@@ -343,6 +361,40 @@ export class RSSService {
     } catch (error) {
       return 0
     }
+  }
+
+  /**
+   * 提取文章中的图片 URL
+   */
+  private static extractImageUrls(item: ParsedItem): string[] {
+    const urls: Set<string> = new Set<string>()
+
+    // 直接字段
+    if (item.imageURL) {
+      urls.add(item.imageURL)
+    }
+    if (item.bannerImageURL) {
+      urls.add(item.bannerImageURL)
+    }
+
+    // 从 contentHTML / summary 中提取 <img src="...">
+    const htmlSources: string[] = []
+    if (item.contentHTML) htmlSources.push(item.contentHTML)
+    if (item.summary) htmlSources.push(item.summary)
+
+    const imgRegex = /<img[^>]+src=["']([^"'>]+)["'][^>]*>/gi
+
+    for (const html of htmlSources) {
+      let match: RegExpExecArray | null
+      imgRegex.lastIndex = 0
+      while ((match = imgRegex.exec(html)) !== null) {
+        if (match[1]) {
+          urls.add(match[1])
+        }
+      }
+    }
+
+    return Array.from(urls)
   }
 
   /**

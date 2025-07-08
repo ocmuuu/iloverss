@@ -2,6 +2,8 @@ import http from '@ohos.net.http'
 import fs from '@ohos.file.fs'
 import { common } from '@kit.AbilityKit'
 import PreferencesUtil from '../utils/PreferencesUtil'
+import { UrlHashUtil } from '../utils/UrlHashUtil'
+import { ImageDAO } from '../model/ImageDAO'
 
 /**
  * 图片缓存服务 - 参考 FaviconDownloader 简化实现
@@ -10,19 +12,13 @@ export class ImageCacheService {
   private static readonly TIMEOUT = 8000 // 8秒超时
   private static readonly MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB最大文件大小（支持大型GIF动画）
 
-  /** 生成简易 hash 文件名 */
-  private static hash(url: string): string {
-    let hash = 0
-    for (let i = 0; i < url.length; i++) {
-      hash = (hash << 5) - hash + url.charCodeAt(i)
-      hash |= 0 // 32 位
-    }
-    return Math.abs(hash).toString()
+  /** 统一哈希接口（代理 UrlHashUtil） */
+  private static hash(input: string): string {
+    return UrlHashUtil.hash32(input)
   }
 
   private static normalize(url: string): string {
-    const idx = url.indexOf('?')
-    return idx >= 0 ? url.substring(0, idx) : url
+    return UrlHashUtil.normalizeUrl(url)
   }
 
   /**
@@ -100,8 +96,8 @@ export class ImageCacheService {
           // 验证文件保存
           const savedStat = await fs.stat(filePath)
           if (savedStat.size === imageData.byteLength) {
-            // console.info('ImageCacheService', `✅ 图片下载并缓存完成 - URL: ${url}`)
-            // console.info('ImageCacheService', `✅ 缓存文件: ${filePath} (大小: ${savedStat.size} bytes)`)
+            console.info('ImageCacheService', `✅ 图片下载并缓存完成 - URL: ${url}`)
+            console.info('ImageCacheService', `✅ 缓存文件: ${filePath} (大小: ${savedStat.size} bytes)`)
             savedSuccessfully = true
             return filePath
           } else {
@@ -172,7 +168,7 @@ export class ImageCacheService {
           const sizeInMB = (result.byteLength / (1024 * 1024)).toFixed(2)
           const format = ImageCacheService.detectImageFormat(result)
 
-          // console.info('ImageCacheService', `📥 下载成功 - 数据大小: ${result.byteLength} bytes (${sizeInMB}MB), 格式: ${format}`)
+          console.info('ImageCacheService', `📥 下载成功 - 数据大小: ${result.byteLength} bytes (${sizeInMB}MB), 格式: ${format}`)
           // console.info('ImageCacheService', `📊 HTTP响应 - 状态码: ${data.responseCode}, Content-Type: ${data.header['content-type'] || 'unknown'}`)
 
           // 检查文件大小
@@ -190,6 +186,46 @@ export class ImageCacheService {
         }
       })
     })
+  }
+
+  /**
+   * 确保图片已缓存：若数据库已有且文件存在则直接返回；否则下载并写回数据库
+   */
+  static async ensureImageCached(
+    url: string,
+    articleID: string,
+    context: common.UIAbilityContext,
+    force: boolean = false
+  ): Promise<string | null> {
+    try {
+      const imageID: string = UrlHashUtil.generateImageId(url)
+
+      // 查询数据库记录
+      const existingList = await ImageDAO.getImagesByArticleID(articleID)
+      const existing = existingList.find(img => img.imageID === imageID)
+
+      if (existing && existing.localPath && !force) {
+        // 校验文件存在
+        try {
+          const stat = await fs.stat(existing.localPath)
+          if (stat.isFile()) {
+            return existing.localPath
+          }
+        } catch (_) {
+          // 文件不存在，继续下载
+        }
+      }
+
+      // 下载或重新下载
+      const localPath = await ImageCacheService.downloadAndCache(url, articleID, context, force)
+      if (localPath) {
+        await ImageDAO.updateLocalPath(articleID, imageID, localPath)
+      }
+      return localPath
+    } catch (error) {
+      console.error('ImageCacheService', 'ensureImageCached error:', error)
+      return null
+    }
   }
 
   /**

@@ -28,7 +28,7 @@ class DefaultFeedData {
 export class DatabaseManager {
   private static store: relationalStore.RdbStore | null = null
   private static readonly DATABASE_NAME = 'RSSReader.db'
-  private static readonly DATABASE_VERSION = 2 // 升级版本号
+  private static readonly DATABASE_VERSION = 3 // 升级版本号（添加 images.imageID）
   private static isInitialized: boolean = false
 
   /**
@@ -244,6 +244,9 @@ export class DatabaseManager {
         
         // 更新现有表结构
         await DatabaseManager.upgradeArticlesTable()
+      } else if (fromVersion === 2 && toVersion === 3) {
+        // images 表新增 imageID 字段及索引
+        await DatabaseManager.addImageIDColumnToImagesTable()
       }
       
       // 更新版本号
@@ -271,7 +274,7 @@ export class DatabaseManager {
       hilog.info(0x0000, 'DatabaseManager', '开始重新创建数据库...')
       
       // 删除所有表
-      const tables = ['feeds', 'articles', 'statuses', 'authors', 'authorsarticles', 'search', 'syncstatus', 'attachments', 'hubs', 'version']
+      const tables = ['feeds', 'articles', 'statuses', 'authors', 'authorsarticles', 'search', 'syncstatus', 'attachments', 'images', 'hubs', 'version']
       
       for (const table of tables) {
         try {
@@ -376,7 +379,8 @@ export class DatabaseManager {
       
       // 创建附件表 
       await DatabaseManager.createAttachmentsTable()
-      
+      // 创建图片缓存表
+      await DatabaseManager.createImagesTable()
       // 创建Hub表
       await DatabaseManager.createHubsTable()
       
@@ -642,6 +646,37 @@ export class DatabaseManager {
   }
 
   /**
+   * 创建图片缓存表
+   */
+  private static async createImagesTable(): Promise<void> {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        articleID TEXT NOT NULL,
+        imageID TEXT NOT NULL,
+        url TEXT NOT NULL,
+        local_path TEXT NOT NULL,
+        mimeType TEXT,
+        width INTEGER,
+        height INTEGER,
+        sizeInBytes INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(articleID, imageID),
+        FOREIGN KEY (articleID) REFERENCES articles (articleID) ON DELETE CASCADE
+      )
+    `
+    await DatabaseManager.store!.executeSql(sql)
+
+    // 创建索引
+    await DatabaseManager.store!.executeSql('CREATE INDEX IF NOT EXISTS idx_images_url ON images (url)')
+    await DatabaseManager.store!.executeSql('CREATE INDEX IF NOT EXISTS idx_images_article ON images (articleID)')
+    await DatabaseManager.store!.executeSql('CREATE INDEX IF NOT EXISTS idx_images_imageID ON images (imageID)')
+
+    hilog.info(0x0000, 'DatabaseManager', 'images表创建成功')
+  }
+
+  /**
    * 创建Hub表 (扩展功能)
    */
   private static async createHubsTable(): Promise<void> {
@@ -797,5 +832,42 @@ export class DatabaseManager {
    */
   static getDatabaseName(): string {
     return DatabaseManager.DATABASE_NAME
+  }
+
+  /**
+   * 从旧版本升级 - images 表添加 imageID 字段
+   */
+  private static async addImageIDColumnToImagesTable(): Promise<void> {
+    if (!DatabaseManager.store) {
+      throw new Error('数据库未初始化')
+    }
+
+    try {
+      // 检查字段是否已存在
+      const resultSet = await DatabaseManager.store.querySql("PRAGMA table_info(images)")
+      let hasColumn = false
+      while (!resultSet.isAtLastRow) {
+        resultSet.goToNextRow()
+        const columnName = resultSet.getString(1)
+        if (columnName === 'imageID') {
+          hasColumn = true
+          break
+        }
+      }
+      resultSet.close()
+
+      if (!hasColumn) {
+        await DatabaseManager.store.executeSql('ALTER TABLE images ADD COLUMN imageID TEXT')
+        await DatabaseManager.store.executeSql('CREATE INDEX IF NOT EXISTS idx_images_imageID ON images (imageID)')
+        // 由于无法立即填充旧数据，这里仅添加字段与索引，后续业务层按需更新
+        hilog.info(0x0000, 'DatabaseManager', 'images 表已添加 imageID 字段')
+      } else {
+        hilog.info(0x0000, 'DatabaseManager', 'images.imageID 字段已存在，跳过')
+      }
+    } catch (error) {
+      hilog.error(0x0000, 'DatabaseManager', `升级 images 表失败: %{public}s`, JSON.stringify(error) ?? '')
+      const message: string = error instanceof Error ? error.message : JSON.stringify(error)
+      throw new Error(message)
+    }
   }
 }
