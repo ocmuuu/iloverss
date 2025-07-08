@@ -9,6 +9,8 @@ import { FolderDAO } from '../model/FolderDAO'
 import pasteboard from '@ohos.pasteboard'
 import { FaviconDownloader } from '../utils/FaviconDownloader'
 import RSSService from '../service/RSSService'
+import { ImageCacheService } from '../service/ImageCacheService'
+import { ArticleDAO } from '../model/ArticleDAO'
 import { ParsedFeed } from '../utils/feed/ParsedFeed'
 import { common } from '@kit.AbilityKit'
 import { FeedDataService, type RSSFeedWithUnread } from '../service/FeedDataService'
@@ -213,6 +215,55 @@ export struct RSSFeedList {
       this.folders = await FeedDataService.loadFolders()
     } catch (error) {
       this.folders = []
+    }
+  }
+
+  /**
+   * 为指定订阅源缓存其文章中的图片
+   */
+  private async cacheImagesForFeed(feed: RSSFeedWithUnread) {
+    try {
+      const context = getContext(this) as common.UIAbilityContext
+      if (!context) {
+        return
+      }
+
+      this.refreshProgress = `正在缓存图片 (0/0)`
+
+      // 获取文章列表（只获取 ID，后面再查询全文）
+      const articles = await RSSDataService.getArticlesByFeedId(String(feed.id))
+      const total = articles.length
+      let finished = 0
+
+      for (const article of articles) {
+        try {
+          // 从数据库读取完整内容
+          const full = await ArticleDAO.getArticleByID(article.id)
+          const html = (full && (full.contentText || full.summary)) ? (full.contentText || full.summary) : article.content || article.summary
+
+          // 提取图片 URL
+          const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi
+          let match: RegExpExecArray | null
+          while ((match = imgRegex.exec(html)) !== null) {
+            const url = match[1]
+            if (url.startsWith('data:')) {
+              continue
+            }
+            try {
+              await ImageCacheService.downloadAndCache(url, article.id, context)
+            } catch (_) {}
+          }
+        } catch (_) {}
+
+        finished++
+        this.refreshProgress = `正在缓存图片 (${finished}/${total})`
+      }
+
+      this.refreshProgress = `图片缓存完成 (${total})`
+      setTimeout(()=>{this.refreshProgress='' }, 3000)
+    } catch (error) {
+      this.refreshProgress = `缓存图片失败: ${error instanceof Error ? error.message : String(error)}`
+      setTimeout(()=>{this.refreshProgress='' }, 5000)
     }
   }
 
@@ -915,7 +966,7 @@ export struct RSSFeedList {
       Text(`${count}${this.uiUpdateTrigger >= 0 ? '' : ''}`)
         .fontSize(12)
         .fontColor('#fff')
-        .backgroundColor('#007AFF')
+        .backgroundColor('#5C9DFF') // 更加淡雅的蓝色
         .borderRadius(10)
         .padding({ left: 6, right: 6, top: 2, bottom: 2 })
     }
@@ -930,6 +981,13 @@ export struct RSSFeedList {
       })
         .onClick(() => {
           this.refreshSingleFeed(feed)
+        })
+
+      MenuItem({ 
+        content: "缓存图片"
+      })
+        .onClick(() => {
+          this.cacheImagesForFeed(feed)
         })
 
       MenuItem({ 

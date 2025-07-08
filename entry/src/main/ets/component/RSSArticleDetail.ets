@@ -108,7 +108,12 @@ export default struct RSSArticleDetail {
     }
     try {
       this.isLoadingArticle = true
-      this.loadRetryCount = 0
+      // 最多显示加载蒙版 3 秒，超时自动隐藏
+      setTimeout(() => {
+        if (this.isLoadingArticle) {
+          this.isLoadingArticle = false
+        }
+      }, 3000)
       this.showHelp = false
       
       const htmlContent = this.generateOptimizedArticleHTML(this.selectedArticle)
@@ -311,26 +316,7 @@ export default struct RSSArticleDetail {
     }
   }
 
-  private generateFallbackHTML(article: RSSArticle): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: system-ui; margin: 16px; color: #333; }
-        .error { color: #ff4444; text-align: center; padding: 20px; }
-        h1 { font-size: 20px; margin-bottom: 16px; }
-        .summary { line-height: 1.6; }
-    </style>
-</head>
-<body>
-    <div class="error">内容加载失败，显示简化版本</div>
-    <h1>${article.title}</h1>
-    <div class="summary">${article.summary || '无摘要可显示'}</div>
-</body>
-</html>`
-  }
+  // generateFallbackHTML 方法已移除，简化 HTML 回退功能取消。
 
   build() {
     Column() {
@@ -424,7 +410,7 @@ export default struct RSSArticleDetail {
         })
         .onPageEnd(() => {
           this.isLoadingArticle = false
-          this.loadRetryCount = 0
+          // 不在 onPageEnd 重置 loadRetryCount，避免主框架加载错误导致无限重试循环
           if (this.currentArticleId === 'help_document') {
             return
           }
@@ -437,6 +423,11 @@ export default struct RSSArticleDetail {
         })
         .onErrorReceive((event: ESObject) => {
           const extEvent = event as ExtendedWebErrorEvent
+          // 仅当确认是主框架失败 (isForMainFrame === true) 且 errorCode != -1 时才重试；
+          // 否则认为是子资源或非致命错误，忽略以避免重复刷新。
+          if (extEvent.isForMainFrame !== true) {
+            return
+          }
           const errorDetails: ErrorDetails = {
             code: extEvent.errorCode,
             description: extEvent.description,
@@ -448,32 +439,14 @@ export default struct RSSArticleDetail {
           
           const errorCode = extEvent.errorCode ?? -1
           
-          if (errorCode === -3) {
+          if (errorCode === -3 || errorCode === -1) {
             return
           }
           
           console.error('RSSArticleDetail', `文章内容加载失败: 错误码=${errorCode}, 描述=${extEvent.description || 'N/A'}, URL=${extEvent.url || 'N/A'}, 主框架=${extEvent.isForMainFrame}`)
           
-          if (this.loadRetryCount < this.maxLoadRetries) {
-            this.loadRetryCount++
-            const delay = this.retryDelayMs * this.loadRetryCount
-
-            setTimeout(() => {
-              if (this.selectedArticle) {
-                this.reloadWebContent()
-              }
-            }, delay)
-          } else {
-            if (this.selectedArticle) {
-              const fallbackHtml = this.generateFallbackHTML(this.selectedArticle)
-              const fallbackUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(fallbackHtml)
-              try {
-                this.webController.loadUrl(fallbackUrl)
-              } catch (loadError) {
-                console.error('RSSArticleDetail', '加载备用内容失败:', loadError)
-              }
-            }
-          }
+          // 不再自动重试，也不降级简化 HTML，仅记录错误。
+          return
         })
 
         if (this.selectedArticle && this.isLoadingArticle) {
