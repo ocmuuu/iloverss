@@ -8,7 +8,7 @@
   "name": "爱读RSS",
   "description": "为鸿蒙系统设计的现代化RSS阅读器",
   "main": "",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "dependencies": {},
   "dynamicDependencies": {}
 }

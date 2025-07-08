@@ -39,7 +39,32 @@ export default struct RSSArticleList {
     }
   }
 
+  // 同步当前 articleList 与全局状态中的已读/收藏信息
+  private syncArticleStatuses() {
+    this.articleList.forEach(article => {
+      const latestRead = GlobalState.getArticleReadStatus(article.id)
+      const latestStar = GlobalState.getArticleStarStatus(article.id)
+
+      // 避免因状态写入延迟将已读回退为未读：
+      // 若本地已标记为已读，则保持已读；否则以全局状态为准
+      article.readStatus = article.readStatus || latestRead
+
+      // 收藏状态可以直接覆盖（不会影响阅读流畅性）
+      article.starredStatus = latestStar
+    })
+  }
+
   onGlobalRefreshTriggered() {
+    // 当当前RSS源为“全部未读”时，如果立即刷新列表，会导致刚阅读的文章因为状态变为已读而从列表中消失，
+    // 进而触发 Index 中的 selectedArticle 被清空，影响阅读体验。
+    // 因此对于 id === 'unread' 的特殊源，此处跳过自动刷新，由用户手动刷新或切换列表时再加载。
+    if (this.selectedFeed && this.selectedFeed.id === 'unread') {
+      // 仅同步状态并刷新过滤结果
+      this.syncArticleStatuses()
+      this.updateFilteredList()
+      return
+    }
+
     this.loadArticles()
   }
 
@@ -81,8 +106,12 @@ export default struct RSSArticleList {
     
     const currentIndex = this.getCurrentArticleIndex()
     if (currentIndex === -1 && this.selectedArticleId) {
-      AppStorage.set('currentArticleIndex', -1)
-      AppStorage.set('selectedArticleId', '')
+      // 在 “全部未读” 列表中，文章被过滤掉后 selectedArticleId 可能暂时找不到，
+      // 但我们不希望立即清空详情页。因此仅在非 unread 列表时才重置。
+      if (!(this.selectedFeed && this.selectedFeed.id === 'unread')) {
+        AppStorage.set('currentArticleIndex', -1)
+        AppStorage.set('selectedArticleId', '')
+      }
     } else if (currentIndex >= 0) {
       AppStorage.set('currentArticleIndex', currentIndex)
       AppStorage.set('selectedArticleId', this.selectedArticleId)

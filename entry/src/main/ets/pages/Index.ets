@@ -81,12 +81,22 @@ struct Index {
         break
       case KeyCode.KEYCODE_M: // M 切换已读
         if (this.selectedArticle) {
-          GlobalState.updateArticleReadStatus(this.selectedArticle.id, !this.selectedArticle.readStatus)
+          // 计算目标已读状态（取反）
+          const newReadStatus: boolean = !this.selectedArticle.readStatus
+          // 本地立即更新，保证后续按键读取到最新状态
+          this.selectedArticle.readStatus = newReadStatus
+          // 调用全局状态更新
+          GlobalState.updateArticleReadStatus(this.selectedArticle.id, newReadStatus)
         }
         break
       case KeyCode.KEYCODE_S: // S 收藏切换
         if (this.selectedArticle) {
-          GlobalState.updateArticleStarStatus(this.selectedArticle.id, this.selectedArticle.starredStatus)
+          const currentStarStatus: boolean = this.selectedArticle.starredStatus
+          const newStarStatus: boolean = !currentStarStatus
+          // 本地先更新，确保按键可重复切换
+          this.selectedArticle.starredStatus = newStarStatus
+          // 全局状态方法期望传入“当前”状态，它会内部取反
+          GlobalState.updateArticleStarStatus(this.selectedArticle.id, currentStarStatus)
         }
         break
       case KeyCode.KEYCODE_R: // R 刷新
@@ -215,9 +225,13 @@ struct Index {
 
   // 处理refreshTrigger变化的回调
   onRefreshTriggerChanged() {
-    // 刷新文章列表
+    // 如果当前查看的是“全部未读”列表，则避免自动刷新，防止刚阅读的文章立刻被移除
     if (this.rssArticleListRef) {
-      this.rssArticleListRef.loadArticles()
+      if (this.selectedFeed && this.selectedFeed.id === 'unread') {
+        // 仅刷新内部已读/未读统计，而不重新拉取列表
+      } else {
+        this.rssArticleListRef.loadArticles()
+      }
     }
     // 刷新RSS源列表的未读数量
     if (this.rssFeelListRef) {
