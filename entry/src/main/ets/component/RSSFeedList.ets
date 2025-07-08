@@ -249,8 +249,16 @@ export struct RSSFeedList {
             if (url.startsWith('data:')) {
               continue
             }
+
+            // 先检查是否已缓存
+            const cached = await ImageCacheService.getCachedPath(url, article.id, context)
+            if (cached) {
+              // console.info('FeedCache', `已存在缓存，跳过下载: ${url}`)
+              continue
+            }
+
             try {
-              await ImageCacheService.downloadAndCache(url, article.id, context)
+              await ImageCacheService.downloadAndCache(url, article.id, context, true)
             } catch (_) {}
           }
         } catch (_) {}

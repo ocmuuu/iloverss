@@ -6,7 +6,9 @@ import { ImageCacheService } from '../service/ImageCacheService'
 import { common } from '@kit.AbilityKit'
 import PreferencesUtil from '../utils/PreferencesUtil'
 import { GlobalState } from '../model/GlobalState'
+import fs from '@ohos.file.fs'
 
+// 运行时检测 createUri 方法，避免类型声明冲突
 interface ErrorCodeEvent {
   errorCode?: number
 }
@@ -98,7 +100,7 @@ export default struct RSSArticleDetail {
     }
   }
 
-  private reloadWebContent() {
+  private async reloadWebContent() {
     if (!this.selectedArticle) {
       return
     }
@@ -116,16 +118,167 @@ export default struct RSSArticleDetail {
       }, 3000)
       this.showHelp = false
       
-      const htmlContent = this.generateOptimizedArticleHTML(this.selectedArticle)
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent)
+      const baseHtml = this.generateOptimizedArticleHTML(this.selectedArticle)
+      // 将已缓存图片替换为受信任 ability:// URI
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(baseHtml)
       this.webController.loadUrl(dataUrl)
       
-      this.prefetchImages(htmlContent)
+      this.prefetchImages(baseHtml)
       
     } catch (error) {
       console.error('RSSArticleDetail', '重新加载Web内容失败:', JSON.stringify(error))
       this.isLoadingArticle = false
     }
+  }
+
+  /**
+   * 仅检查 <img> 是否已有本地缓存并输出日志；
+   * 如未命中且用户开启缓存，则后台下载（不阻塞）。
+   */
+  private async checkImagesCache(html: string, articleId: string): Promise<void> {
+    try {
+      const context = getContext(this) as common.UIAbilityContext
+      if (!context) {
+        return
+      }
+
+      let imageCacheEnabled: boolean = false
+      try {
+        imageCacheEnabled = await PreferencesUtil.getImageCacheEnabled()
+      } catch (_) {
+        imageCacheEnabled = false
+      }
+
+      const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+      let match: RegExpExecArray | null
+
+      while ((match = imgRegex.exec(html)) !== null) {
+        const url = match[1]
+        if (url.startsWith('data:')) {
+          continue
+        }
+
+        try {
+          const cachedPath = await ImageCacheService.getCachedPath(url, articleId, context)
+          if (cachedPath) {
+            // console.info('ImageCacheService', `✅ 已使用缓存文件 - URL: ${url}`)
+          } else if (imageCacheEnabled) {
+            // 后台下载，不阻塞页面加载
+            ImageCacheService.downloadAndCache(url, articleId, context).catch(() => {})
+          }
+        } catch {
+          // 忽略单个图片错误
+        }
+      }
+    } catch (_) {
+      // 忽略错误，避免影响页面加载
+    }
+  }
+
+  /**
+   * 将已缓存图片替换为 data:image/...;base64,xxxx
+   */
+  private async replaceImagesWithBase64Cached(html: string, articleId: string): Promise<string> {
+    try {
+      const context = getContext(this) as common.UIAbilityContext
+      if (!context) {
+        return html
+      }
+
+      let imageCacheEnabled: boolean = false
+      try {
+        imageCacheEnabled = await PreferencesUtil.getImageCacheEnabled()
+      } catch (_) {
+        imageCacheEnabled = false
+      }
+
+      const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+      let resultHtml = html
+      let match: RegExpExecArray | null
+
+      const asyncTasks: Promise<void>[] = []
+
+      while ((match = imgRegex.exec(html)) !== null) {
+        const url = match[1]
+        if (url.startsWith('data:')) {
+          continue
+        }
+
+        try {
+          const cachedPath = await ImageCacheService.getCachedPath(url, articleId, context)
+          if (cachedPath) {
+            const base64 = await this.readFileToBase64(cachedPath)
+            if (base64) {
+              const mime = this.detectMimeFromExtension(url)
+              const dataUri = `data:${mime};base64,${base64}`
+              resultHtml = resultHtml.replace(url, dataUri)
+              // console.info('ImageCacheService', `🖼️ 使用 Base64 缓存 - URL: ${url}`)
+            }
+          } else if (imageCacheEnabled) {
+            asyncTasks.push((async () => { await ImageCacheService.downloadAndCache(url, articleId, context); })())
+          }
+        } catch {
+          // 忽略单个图片错误
+        }
+      }
+
+      if (asyncTasks.length > 0) {
+        Promise.all(asyncTasks).then(() => {})
+      }
+
+      return resultHtml
+    } catch {
+      return html
+    }
+  }
+
+  /** 把文件读取为 Base64 字符串 */
+  private async readFileToBase64(filePath: string): Promise<string | null> {
+    try {
+      const file = await fs.open(filePath, fs.OpenMode.READ_ONLY)
+      const stat = await fs.stat(filePath)
+      const buffer = new ArrayBuffer(stat.size)
+      await fs.read(file.fd, buffer)
+      await fs.close(file.fd)
+      return this.arrayBufferToBase64(buffer)
+    } catch {
+      return null
+    }
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+    const bytes = new Uint8Array(buffer)
+    let result = ''
+    let i = 0
+    for (; i + 2 < bytes.length; i += 3) {
+      const triple = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2]
+      result += chars.charAt((triple >> 18) & 0x3f)
+      result += chars.charAt((triple >> 12) & 0x3f)
+      result += chars.charAt((triple >> 6) & 0x3f)
+      result += chars.charAt(triple & 0x3f)
+    }
+    if (i < bytes.length) {
+      const byte1 = bytes[i]
+      const byte2 = i + 1 < bytes.length ? bytes[i + 1] : 0
+      const pad = i + 1 < bytes.length ? 1 : 2
+      const triple = (byte1 << 16) | (byte2 << 8)
+      result += chars.charAt((triple >> 18) & 0x3f)
+      result += chars.charAt((triple >> 12) & 0x3f)
+      result += pad === 2 ? '=' : chars.charAt((triple >> 6) & 0x3f)
+      result += '='
+    }
+    return result
+  }
+
+  private detectMimeFromExtension(url: string): string {
+    const lower = url.toLowerCase()
+    if (lower.endsWith('.png')) return 'image/png'
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+    if (lower.endsWith('.gif')) return 'image/gif'
+    if (lower.endsWith('.webp')) return 'image/webp'
+    if (lower.endsWith('.bmp')) return 'image/bmp'
+    return 'image/*'
   }
 
   private handleKeyboardEvent(event: KeyEvent): boolean {
@@ -214,17 +367,17 @@ export default struct RSSArticleDetail {
 
   private async prefetchImages(htmlContent: string) {
     try {
-      let imageCacheEnabled = false
+      // 仅当用户开启“图片缓存”功能时才主动下载下一篇文章的图片
+      let imageCacheEnabled: boolean = false
       try {
         imageCacheEnabled = await PreferencesUtil.getImageCacheEnabled()
-      } catch (e) {
+      } catch (_) {
         imageCacheEnabled = false
       }
-      
       if (!imageCacheEnabled) {
         return
       }
-      
+
       const context = getContext(this) as common.UIAbilityContext
       if (!context) {
         return

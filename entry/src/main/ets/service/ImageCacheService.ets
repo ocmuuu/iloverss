@@ -35,23 +35,10 @@ export class ImageCacheService {
   static async downloadAndCache(
     url: string,
     articleId: string,
-    context: common.UIAbilityContext
+    context: common.UIAbilityContext,
+    force: boolean = false // true 时忽略首选项，始终尝试缓存
   ): Promise<string | null> {
     try {
-      // 检查图片缓存是否启用
-      let imageCacheEnabled = false
-      try {
-        imageCacheEnabled = await PreferencesUtil.getImageCacheEnabled()
-      } catch (error) {
-        console.warn('ImageCacheService', '获取图片缓存设置失败，默认关闭:', error)
-        return null
-      }
-
-      if (!imageCacheEnabled) {
-        console.info('ImageCacheService', '图片缓存已关闭，跳过下载')
-        return null
-      }
-
       // 创建缓存目录
       const cacheDir = `${context.cacheDir}/rss_images/${ImageCacheService.hash(articleId)}`
       if (!await ImageCacheService.ensureDirectoryExists(cacheDir)) {
@@ -66,7 +53,7 @@ export class ImageCacheService {
         await fs.write(file.fd, testData)
         await fs.close(file.fd)
         await fs.unlink(testFile) // 删除测试文件
-        console.info('ImageCacheService', '磁盘空间检查通过')
+        // console.info('ImageCacheService', '磁盘空间检查通过')
       } catch (spaceError) {
         console.error('ImageCacheService', '磁盘空间检查失败:', spaceError)
         throw new Error('磁盘空间不足或写入权限异常')
@@ -81,14 +68,14 @@ export class ImageCacheService {
       try {
         const stat = await fs.stat(filePath)
         if (stat.isFile()) {
-          console.info('ImageCacheService', `✅ 缓存命中 - URL: ${url}`)
-          console.info('ImageCacheService', `✅ 缓存文件: ${filePath} (大小: ${stat.size} bytes)`)
+          // console.info('ImageCacheService', `✅ 缓存命中 - URL: ${url}`)
+          // console.info('ImageCacheService', `✅ 缓存文件: ${filePath} (大小: ${stat.size} bytes)`)
           return filePath
         }
       } catch (_) { /* 文件不存在，继续下载 */ }
 
-      console.info('ImageCacheService', `🔄 开始下载图片 - URL: ${url}`)
-      console.info('ImageCacheService', `🔄 目标路径: ${filePath}`)
+      // console.info('ImageCacheService', `🔄 开始下载图片 - URL: ${url}`)
+      // console.info('ImageCacheService', `🔄 目标路径: ${filePath}`)
 
       // 下载图片
       const imageData = await ImageCacheService.downloadImage(url)
@@ -104,7 +91,7 @@ export class ImageCacheService {
 
       while (!savedSuccessfully && retryCount < maxRetries) {
         try {
-          console.info('ImageCacheService', `💾 尝试保存文件 (第${retryCount + 1}次) - 路径: ${filePath}`)
+          // console.info('ImageCacheService', `💾 尝试保存文件 (第${retryCount + 1}次) - 路径: ${filePath}`)
           
           const file = await fs.open(filePath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY)
           await fs.write(file.fd, imageData)
@@ -113,8 +100,8 @@ export class ImageCacheService {
           // 验证文件保存
           const savedStat = await fs.stat(filePath)
           if (savedStat.size === imageData.byteLength) {
-            console.info('ImageCacheService', `✅ 图片下载并缓存完成 - URL: ${url}`)
-            console.info('ImageCacheService', `✅ 缓存文件: ${filePath} (大小: ${savedStat.size} bytes)`)
+            // console.info('ImageCacheService', `✅ 图片下载并缓存完成 - URL: ${url}`)
+            // console.info('ImageCacheService', `✅ 缓存文件: ${filePath} (大小: ${savedStat.size} bytes)`)
             savedSuccessfully = true
             return filePath
           } else {
@@ -161,7 +148,7 @@ export class ImageCacheService {
     return new Promise((resolve, reject) => {
       const httpRequest = http.createHttp()
 
-      console.info('ImageCacheService', `📡 发起HTTP请求 - URL: ${url}`)
+      // console.info('ImageCacheService', `📡 发起HTTP请求 - URL: ${url}`)
 
       httpRequest.request(url, {
         method: http.RequestMethod.GET,
@@ -185,8 +172,8 @@ export class ImageCacheService {
           const sizeInMB = (result.byteLength / (1024 * 1024)).toFixed(2)
           const format = ImageCacheService.detectImageFormat(result)
 
-          console.info('ImageCacheService', `📥 下载成功 - 数据大小: ${result.byteLength} bytes (${sizeInMB}MB), 格式: ${format}`)
-          console.info('ImageCacheService', `📊 HTTP响应 - 状态码: ${data.responseCode}, Content-Type: ${data.header['content-type'] || 'unknown'}`)
+          // console.info('ImageCacheService', `📥 下载成功 - 数据大小: ${result.byteLength} bytes (${sizeInMB}MB), 格式: ${format}`)
+          // console.info('ImageCacheService', `📊 HTTP响应 - 状态码: ${data.responseCode}, Content-Type: ${data.header['content-type'] || 'unknown'}`)
 
           // 检查文件大小
           if (result.byteLength > ImageCacheService.MAX_FILE_SIZE) {
@@ -297,7 +284,7 @@ export class ImageCacheService {
               const subFiles = await fs.listFile(filePath) as Array<string>
               if (subFiles.length === 0) {
                 await fs.rmdir(filePath)
-                console.info('ImageCacheService', `清理空目录: ${fileName}`)
+                // console.info('ImageCacheService', `清理空目录: ${fileName}`)
               }
             } catch (_) { /* 忽略删除目录失败 */ }
           } else if (stat.isFile()) {
@@ -310,9 +297,9 @@ export class ImageCacheService {
             
             if (fileAge > maxAgeMs) {
               await fs.unlink(filePath)
-              console.info('ImageCacheService', `清理过期图片: ${fileName} (年龄: ${fileAgeHours}小时 > 限制: ${maxAgeHours}小时)`)
+              // console.info('ImageCacheService', `清理过期图片: ${fileName} (年龄: ${fileAgeHours}小时 > 限制: ${maxAgeHours}小时)`)
             } else {
-              console.info('ImageCacheService', `保留图片: ${fileName} (年龄: ${fileAgeHours}小时 <= 限制: ${maxAgeHours}小时)`)
+              // console.info('ImageCacheService', `保留图片: ${fileName} (年龄: ${fileAgeHours}小时 <= 限制: ${maxAgeHours}小时)`)
             }
           }
         } catch (error) {
@@ -342,5 +329,24 @@ export class ImageCacheService {
 
   async cleanupOldImages(): Promise<void> {
     console.warn('ImageCacheService', '请使用静态方法 ImageCacheService.cleanupOldImages(context)')
+  }
+
+  /**
+   * 检查指定 URL 是否已缓存，返回本地路径，不做任何下载
+   */
+  static async getCachedPath(url: string, articleId: string, context: common.UIAbilityContext): Promise<string | null> {
+    try {
+      const cacheDir = `${context.cacheDir}/rss_images/${ImageCacheService.hash(articleId)}`
+      const normalizedUrl = ImageCacheService.normalize(url)
+      const fileName = ImageCacheService.hash(normalizedUrl)
+      const filePath = `${cacheDir}/${fileName}`
+      const stat = await fs.stat(filePath)
+      if (stat.isFile()) {
+        return filePath
+      }
+      return null
+    } catch (_) {
+      return null
+    }
   }
 } 

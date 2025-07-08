@@ -51,7 +51,7 @@ struct Index {
    */
   // 统一的键盘事件处理 (使用 ESObject 动态属性，避免类型不匹配)
   private handleKeyEvent(event: UIKeyEvent): boolean {
-    console.info('ShortcutLog', `KeyEvent received: code=${event.keyCode}, meta=${event.metaKey}`)
+    // console.info('ShortcutLog', `KeyEvent received: code=${event.keyCode}, meta=${event.metaKey}`)
     if (event.type !== KEY_TYPE_DOWN) {
       return false // 只处理按下事件
     }
@@ -130,7 +130,7 @@ struct Index {
    * 监听全局选中的RSS源变化
    */
   async onGlobalFeedChanged() {
-    console.info('Index', `全局选中RSS源变化: ${this.globalSelectedFeedId}`)
+    // console.info('Index', `全局选中RSS源变化: ${this.globalSelectedFeedId}`)
 
     // 如果有选中的RSS源ID
     if (this.globalSelectedFeedId) {
@@ -243,7 +243,7 @@ struct Index {
    * 监听全局选中文章变化
    */
   onGlobalArticleChanged() {
-    console.info('Index', `全局选中文章变化: ${this.globalSelectedArticleId}`)
+    // console.info('Index', `全局选中文章变化: ${this.globalSelectedArticleId}`)
     
     if (this.globalSelectedArticleId && this.rssArticleListRef) {
       // 从文章列表中找到对应的文章
@@ -252,12 +252,12 @@ struct Index {
       
       if (article) {
         this.selectedArticle = article
-        console.info('Index', `更新本地选中文章: ${article.title}`)
+        // console.info('Index', `更新本地选中文章: ${article.title}`)
       }
     } else if (!this.globalSelectedArticleId) {
       // 如果全局选中文章ID为空，清除本地选中文章
       this.selectedArticle = undefined
-      console.info('Index', '清除本地选中文章')
+      // console.info('Index', '清除本地选中文章')
     }
   }
 
@@ -265,7 +265,7 @@ struct Index {
    * 监听全局文章索引变化
    */
   onGlobalIndexChanged() {
-    console.info('Index', `全局文章索引变化: ${this.globalCurrentIndex}`)
+    // console.info('Index', `全局文章索引变化: ${this.globalCurrentIndex}`)
     // 索引变化时，文章选择逻辑由RSSArticleList处理
     // 这里只需要记录日志
   }
@@ -410,7 +410,7 @@ struct Index {
         this.secondColumnWidth = savedSecondWidth
       }
       
-      console.info('Index', `状态恢复完成 - 折叠状态: ${this.isFirstColumnCollapsed}, 选中RSS源: ${this.selectedFeed ? this.selectedFeed.title : '无'}`)
+      // console.info('Index', `状态恢复完成 - 折叠状态: ${this.isFirstColumnCollapsed}, 选中RSS源: ${this.selectedFeed ? this.selectedFeed.title : '无'}`)
     } catch (error) {
       console.error('Index', '状态恢复失败:', JSON.stringify(error))
     }
