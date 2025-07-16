@@ -9,6 +9,10 @@
     },
     {
       "name": "ohosTest",
+    },
+    {
+      "name": "devicedebug",
+      "runtimeOS": "HarmonyOS"
     }
   ]
 }

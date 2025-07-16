@@ -13,12 +13,32 @@
           "profile": "C:/App/iloverss/iloverssRelease.p7b",
           "certpath": "C:/App/iloverss/iloverss.cer"
         }
+      },
+      {
+        "name": "devicedebug",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\chaon\\.ohos\\config\\debug_iloverss_NaE4JAjTaGEZsv5q-HkQACHXtGtPQ5S9XifHYMed0yA=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001AA4161B5A42E8C9A4A4C213A550520741B5EA0A91289378ED55DE8006EEABEBEA4819DA8A552D",
+          "profile": "C:\\Users\\chaon\\.ohos\\config\\debug_iloverss_NaE4JAjTaGEZsv5q-HkQACHXtGtPQ5S9XifHYMed0yA=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\chaon\\.ohos\\config\\debug_iloverss_NaE4JAjTaGEZsv5q-HkQACHXtGtPQ5S9XifHYMed0yA=.p12",
+          "storePassword": "0000001AAEC9861DD823601987DE3B28C557E9E95D701F0F69E5150F8810F566673697C137E10A60B9AD"
+        }
       }
     ],
     "products": [
       {
         "name": "default",
         "signingConfig": "default",
+        "compatibleSdkVersion": "5.0.5(17)",
+        "runtimeOS": "HarmonyOS",
+        "bundleName": "com.mznm.iloverss"
+      },
+      {
+        "name": "devicedebug",
+        "signingConfig": "devicedebug",
         "compatibleSdkVersion": "5.0.5(17)",
         "runtimeOS": "HarmonyOS",
         "bundleName": "com.mznm.iloverss"
@@ -39,6 +59,12 @@
           "name": "default",
           "applyToProducts": [
             "default"
+          ]
+        },
+        {
+          "name": "devicedebug",
+          "applyToProducts": [
+            "devicedebug"
           ]
         }
       ]
