@@ -26,6 +26,7 @@ struct Index {
   // 全局状态监听
   @StorageLink('selectedArticleId') @Watch('onGlobalArticleChanged') globalSelectedArticleId: string = ''
   @StorageLink('currentArticleIndex') @Watch('onGlobalIndexChanged') globalCurrentIndex: number = -1
+  @StorageLink('articleListTotal') globalArticleTotal: number = 0
   @StorageLink('isFirstColumnCollapsed') isFirstColumnCollapsed: boolean = false // 控制第一栏折叠状态
 
   /**
@@ -276,15 +277,12 @@ struct Index {
 
   // 计算是否可以切换到上一篇（使用全局状态）
   private canGoPrevious(): boolean {
-    const currentIndex = AppStorage.get<number>('currentArticleIndex') || -1
-    return currentIndex > 0
+    return this.globalCurrentIndex > 0
   }
 
   // 计算是否可以切换到下一篇（使用全局状态）
   private canGoNext(): boolean {
-    const currentIndex = AppStorage.get<number>('currentArticleIndex') || -1
-    const totalArticles = AppStorage.get<number>('articleListTotal') || 0
-    return currentIndex >= 0 && currentIndex < totalArticles - 1
+    return this.globalCurrentIndex >= 0 && this.globalCurrentIndex < this.globalArticleTotal - 1
   }
 
   // getNextArticle 方法已移除，现在使用 GlobalState.getNextArticle()

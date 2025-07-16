@@ -1,5 +1,6 @@
 import { RSSArticle, RSSDataService } from '../model/RSSModel'
 import { ArticleDAO } from '../model/ArticleDAO'
+import { FeedDAO } from '../model/FeedDAO'
 import webview from '@ohos.web.webview'
 import resourceManager from '@ohos.resourceManager'
 import { ImageCacheService } from '../service/ImageCacheService'
@@ -60,6 +61,7 @@ export default struct RSSArticleDetail {
   private readonly retryDelayMs: number = 2000
 
   @State private pendingArticle: RSSArticle | undefined = undefined
+  @State private feedTitle: string = ''
 
   @StorageLink('selectedArticleId') selectedArticleId: string = ''
   @StorageLink('currentArticleIndex') @Watch('onGlobalIndexChanged') currentIndex: number = -1
@@ -92,8 +94,10 @@ export default struct RSSArticleDetail {
   onSelectedArticleChanged() {
     if (this.selectedArticle) {
       this.currentArticleId = this.selectedArticle.id
+      this.loadFeedTitle()
     } else {
       this.currentArticleId = ''
+      this.feedTitle = ''
     }
 
     if (!this.isWebViewReady) {
@@ -107,10 +111,45 @@ export default struct RSSArticleDetail {
     if (this.selectedArticle != undefined) {
       if (this.selectedArticle.id !== this.currentArticleId) {
         this.currentArticleId = this.selectedArticle.id
+        this.loadFeedTitle()
         this.reloadWebContent()
       }
     } else {
       this.currentArticleId = ''
+      this.feedTitle = ''
+    }
+  }
+
+  private async loadFeedTitle() {
+    if (!this.selectedArticle) {
+      this.feedTitle = ''
+      return
+    }
+
+    try {
+      // 先检查是否为特殊选项（今天、收藏、全部未读）
+      const feedId = this.selectedArticle.feedId
+      if (feedId === 'today' || feedId === 'favorites' || feedId === 'unread') {
+        this.feedTitle = ''
+        return
+      }
+
+      // 直接从数据库查询单个FEED
+      const feedIdNum = parseInt(feedId)
+      if (isNaN(feedIdNum)) {
+        this.feedTitle = ''
+        return
+      }
+
+      const dbFeed = await FeedDAO.getFeedById(feedIdNum)
+      if (dbFeed) {
+        this.feedTitle = dbFeed.title || ''
+      } else {
+        this.feedTitle = ''
+      }
+    } catch (error) {
+      console.error('RSSArticleDetail', '加载FEED标题失败:', error)
+      this.feedTitle = ''
     }
   }
 
@@ -210,6 +249,7 @@ export default struct RSSArticleDetail {
   }
 
   private generateOptimizedArticleHTML(article: RSSArticle): string {
+    const feedInfo = this.feedTitle ? ` | ${this.feedTitle}` : ''
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -227,7 +267,7 @@ export default struct RSSArticleDetail {
 </head>
 <body>
     <h1>${article.title}</h1>
-    <div class="meta">${article.publishDate} | ${article.author || '未知作者'}</div>
+    <div class="meta">${article.publishDate} | ${article.author || '未知作者'}${feedInfo}</div>
     <div class="content">${article.content || article.summary || '无内容'}</div>
 </body>
 </html>`
@@ -389,18 +429,22 @@ export default struct RSSArticleDetail {
             .width(20)
             .height(20)
             .margin({ right: 12 })
-            .opacity(GlobalState.canGoPrevious() ? 1.0 : 0.3)
+            .opacity(this.canGoPrevious ? 1.0 : 0.3)
             .onClick(() => {
-              GlobalState.switchToPreviousArticle()
+              if (this.canGoPrevious) {
+                GlobalState.switchToPreviousArticle()
+              }
             })
           
           Image($r("app.media.down"))
             .width(20)
             .height(20)
             .margin({ right: 12 })
-            .opacity(GlobalState.canGoNext() ? 1.0 : 0.3)
+            .opacity(this.canGoNext ? 1.0 : 0.3)
             .onClick(() => {
-              GlobalState.switchToNextArticle()
+              if (this.canGoNext) {
+                GlobalState.switchToNextArticle()
+              }
             })
           
           Image(this.selectedArticle?.readStatus ? $r("app.media.read") : $r("app.media.unread"))

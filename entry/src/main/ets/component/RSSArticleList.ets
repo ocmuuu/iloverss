@@ -9,6 +9,7 @@ export default struct RSSArticleList {
   @State selectedArticleId: string = ''
   @State showUnreadOnly: boolean = false
   @State filteredArticleList: RSSArticle[] = []
+  @State retainedReadArticleIds: string[] = []
 
   onRef?: (ref: RSSArticleList) => void
   @Prop isFirstColumnCollapsed: boolean = false
@@ -55,20 +56,24 @@ export default struct RSSArticleList {
   }
 
   onGlobalRefreshTriggered() {
-    // 当当前RSS源为“全部未读”时，如果立即刷新列表，会导致刚阅读的文章因为状态变为已读而从列表中消失，
-    // 进而触发 Index 中的 selectedArticle 被清空，影响阅读体验。
-    // 因此对于 id === 'unread' 的特殊源，此处跳过自动刷新，由用户手动刷新或切换列表时再加载。
-    if (this.selectedFeed && this.selectedFeed.id === 'unread') {
-      // 仅同步状态并刷新过滤结果
+    const isSpecialUnread = this.selectedFeed && this.selectedFeed.id === 'unread'
+    const usingUnreadFilter = this.showUnreadOnly
+
+    if (isSpecialUnread || usingUnreadFilter) {
+      // 仅同步状态并刷新过滤结果，避免自动刷新导致当前选中文章丢失
       this.syncArticleStatuses()
       this.updateFilteredList()
       return
     }
 
+    // 默认行为：重新加载文章列表
     this.loadArticles()
   }
 
   onSelectedFeedChanged() {
+    // 切换到新的 Feed（或特殊列表）时，重置“仅显示未读”过滤
+    this.showUnreadOnly = false
+    this.retainedReadArticleIds = []
     this.selectedArticleId = ''
     this.initializeArticleList()
   }
@@ -92,7 +97,28 @@ export default struct RSSArticleList {
 
   updateFilteredList() {
     if (this.showUnreadOnly) {
-      this.filteredArticleList = this.articleList.filter(article => !article.readStatus)
+      // 仅显示未读，但需要确保当前选中的文章（即便已读）仍保留在列表中，避免选中状态丢失
+      let unreadList: RSSArticle[] = this.articleList.filter(article => !article.readStatus)
+
+      // 确保当前选中（已读）文章保留
+      if (this.selectedArticleId) {
+        const selected = this.articleList.find(article => article.id === this.selectedArticleId)
+        if (selected && selected.readStatus && !unreadList.some(a => a.id === selected.id)) {
+          unreadList = [selected, ...unreadList]
+        }
+      }
+
+      // 将 retainedReadArticleIds 中的文章按顺序插入到列表顶部（若尚未存在）
+      for (const retainedId of this.retainedReadArticleIds) {
+        if (!unreadList.some(a => a.id === retainedId)) {
+          const retainedArticle = this.articleList.find(a => a.id === retainedId)
+          if (retainedArticle) {
+            unreadList = [retainedArticle, ...unreadList]
+          }
+        }
+      }
+
+      this.filteredArticleList = unreadList
     } else {
       this.filteredArticleList = [...this.articleList]
     }
@@ -106,12 +132,17 @@ export default struct RSSArticleList {
     
     const currentIndex = this.getCurrentArticleIndex()
     if (currentIndex === -1 && this.selectedArticleId) {
-      // 在 “全部未读” 列表中，文章被过滤掉后 selectedArticleId 可能暂时找不到，
-      // 但我们不希望立即清空详情页。因此仅在非 unread 列表时才重置。
-      if (!(this.selectedFeed && this.selectedFeed.id === 'unread')) {
+      // 在以下情况下，文章可能因为过滤而暂时不在列表中，但仍需保持详情页内容：
+      // 1. 当前 RSS 源为 “全部未读” (id === 'unread')
+      // 2. 已对当前源开启了 “仅显示未读”(showUnreadOnly === true)
+      const isSpecialUnreadList = this.selectedFeed && this.selectedFeed.id === 'unread'
+
+      // 若同时满足 not isSpecialUnreadList 且未启用未读过滤，则重置选中状态
+      if (!isSpecialUnreadList && !this.showUnreadOnly) {
         AppStorage.set('currentArticleIndex', -1)
         AppStorage.set('selectedArticleId', '')
       }
+      // 否则保持现有 selectedArticleId 和详情页状态不变
     } else if (currentIndex >= 0) {
       AppStorage.set('currentArticleIndex', currentIndex)
       AppStorage.set('selectedArticleId', this.selectedArticleId)
@@ -133,6 +164,15 @@ export default struct RSSArticleList {
       article.readStatus = true
       this.articleList = [...this.articleList]
       this.updateFilteredList()
+
+      // 将其加入保留列表，避免后续切换选中后被过滤掉
+      if (!this.retainedReadArticleIds.includes(article.id)) {
+        this.retainedReadArticleIds.unshift(article.id)
+        // 限制大小，最多保留 20 条，避免列表无限增长
+        if (this.retainedReadArticleIds.length > 20) {
+          this.retainedReadArticleIds.pop()
+        }
+      }
       
       try {
         const success = await GlobalState.updateArticleReadStatus(article.id, true)
@@ -249,6 +289,9 @@ export default struct RSSArticleList {
       this.articleList = [...this.articleList]
       this.updateFilteredList()
       
+      // 触发全局刷新以更新RSSFeedList的未读数量
+      GlobalState.triggerRefresh()
+      
     } catch (error) {
       console.error('RSSArticleList', '批量标记已读失败:', JSON.stringify(error))
     }
@@ -256,6 +299,10 @@ export default struct RSSArticleList {
 
   toggleUnreadFilter() {
     this.showUnreadOnly = !this.showUnreadOnly
+    if (!this.showUnreadOnly) {
+      // 关闭过滤后，清空保留列表
+      this.retainedReadArticleIds = []
+    }
     this.updateFilteredList()
   }
 
@@ -395,6 +442,13 @@ export default struct RSSArticleList {
                 article.readStatus = true
                 this.articleList = [...this.articleList]
                 this.updateFilteredList()
+
+                if (!this.retainedReadArticleIds.includes(article.id)) {
+                  this.retainedReadArticleIds.unshift(article.id)
+                  if (this.retainedReadArticleIds.length > 20) {
+                    this.retainedReadArticleIds.pop()
+                  }
+                }
                 
                 try {
                   const success = await RSSDataService.markArticleAsRead(article.id)
