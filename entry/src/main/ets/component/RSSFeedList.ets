@@ -498,12 +498,14 @@ export struct RSSFeedList {
 
   async exportOpml() {
     this.operationError = null
-    this.refreshProgress = '正在导出OPML文件...'
+    this.refreshProgress = '正在生成OPML文件...'
 
     try {
       const opmlString = await OPMLService.generateOpml()
       const context = getContext(this) as common.UIAbilityContext
-      const filePath = await OPMLService.saveOpmlFile(opmlString, context)
+      
+      this.refreshProgress = '请选择保存位置...'
+      const filePath = await OPMLService.saveOpmlFileWithPicker(opmlString, context)
 
       try {
         const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, filePath)
@@ -513,7 +515,7 @@ export struct RSSFeedList {
         // ignore
       }
 
-      this.refreshProgress = `OPML导出成功！已保存至下载目录:\n${filePath}(已复制路径)`
+      this.refreshProgress = `OPML导出成功！已保存至:\n${filePath}(已复制路径)`
       setTimeout(() => {
         this.refreshProgress = ''
       }, 5000)
@@ -1114,9 +1116,9 @@ export struct RSSFeedList {
         content: "导入OPML"
       })
         .onClick(() => {
-          this.refreshProgress = '正在导入OPML...'
+          this.refreshProgress = '请选择要导入的OPML文件...'
           const context = getContext(this) as common.UIAbilityContext
-          OPMLService.importOpml(context).then(async () => {
+          OPMLService.importOpmlWithPicker(context).then(async () => {
             this.refreshProgress = '导入完成，正在刷新列表...'
             await Promise.all([this.loadFeeds(), this.loadFolders()])
             await this.updateUnreadCountsSilently()
