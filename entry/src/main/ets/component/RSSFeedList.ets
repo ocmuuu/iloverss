@@ -1199,7 +1199,7 @@ export struct RSSFeedList {
           .height(20)
           .fillColor('#666666')
 
-          .bindContextMenu(this.createAddMenu(), ResponseType.RightClick)
+          .bindContextMenu(this.createAddMenu(), ResponseType.RightClick | ResponseType.LongPress)
           .onClick(() => {
             this.addSubscription()
           })
@@ -1429,7 +1429,7 @@ export struct RSSFeedList {
                 this.toggleFolderExpanded(folder.id)
               }
             })
-            .bindContextMenu(this.createFolderContextMenu(folder), ResponseType.RightClick)
+            .bindContextMenu(this.createFolderContextMenu(folder), ResponseType.RightClick | ResponseType.LongPress)
 
             if (this.expandedFolders.has(folder.id)) {
               ForEach(this.feeds.filter(feed => feed.folderId === folder.id), (feed: RSSFeedWithUnread) => {
@@ -1461,7 +1461,7 @@ export struct RSSFeedList {
                   this.selectedFeedId = feed.id.toString()
                   AppStorage.set('selectedFeedId', feed.id.toString())
                 })
-                .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick)
+                .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick | ResponseType.LongPress)
               }, (feed: RSSFeedWithUnread) => `${folder.id}_${feed.id}_${this.uiUpdateTrigger}`)
 
               if (this.feeds.filter(feed => feed.folderId === folder.id).length === 0) {
@@ -1513,7 +1513,7 @@ export struct RSSFeedList {
               this.selectedFeedId = feed.id.toString()
               AppStorage.set('selectedFeedId', feed.id.toString())
             })
-            .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick)
+            .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick | ResponseType.LongPress)
           }, (feed: RSSFeedWithUnread) => `${feed.id.toString()}_${this.uiUpdateTrigger}`)
 
           if (this.feeds.length === 0 && this.folders.length === 0) {
@@ -1544,7 +1544,7 @@ export struct RSSFeedList {
         .width('100%')
         .layoutWeight(1)
         .backgroundColor('#fff')
-        .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick)
+        .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick | ResponseType.LongPress)
       }
 
         if (this.refreshProgress !== '' || this.operationError !== null) {
