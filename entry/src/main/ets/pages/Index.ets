@@ -28,6 +28,7 @@ struct Index {
   @StorageLink('currentArticleIndex') @Watch('onGlobalIndexChanged') globalCurrentIndex: number = -1
   @StorageLink('articleListTotal') globalArticleTotal: number = 0
   @StorageLink('isFirstColumnCollapsed') isFirstColumnCollapsed: boolean = false // 控制第一栏折叠状态
+  @StorageLink('isSecondColumnCollapsed') isSecondColumnCollapsed: boolean = false // 控制第二栏折叠状态
 
   /**
    * 切换第一栏折叠状态并持久化
@@ -244,9 +245,9 @@ struct Index {
    * 监听全局选中文章变化
    */
   onGlobalArticleChanged() {
-    // console.info('Index', `全局选中文章变化: ${this.globalSelectedArticleId}`)
+    console.info('Index', `Global Article Changed: ${this.globalSelectedArticleId}, SecondColCollapsed: ${this.isSecondColumnCollapsed}, ListRef: ${!!this.rssArticleListRef}`)
     
-    if (this.globalSelectedArticleId && this.rssArticleListRef) {
+    if (this.globalSelectedArticleId && this.rssArticleListRef && !this.isSecondColumnCollapsed) {
       // 从文章列表中找到对应的文章
       const articleList = this.rssArticleListRef.getCurrentArticleList()
       const article = articleList.find(a => a.id === this.globalSelectedArticleId)
@@ -254,7 +255,13 @@ struct Index {
       if (article) {
         this.selectedArticle = article
         // console.info('Index', `更新本地选中文章: ${article.title}`)
+      } else {
+         // Focused Mode: ArticleList unavailable, fetch from DB
+         this.loadArticleFromDB(this.globalSelectedArticleId)
       }
+    } else if (this.globalSelectedArticleId) {
+      // Focused Mode: ArticleList unavailable, fetch from DB
+      this.loadArticleFromDB(this.globalSelectedArticleId)
     } else if (!this.globalSelectedArticleId) {
       // 如果全局选中文章ID为空，清除本地选中文章
       this.selectedArticle = undefined
@@ -269,6 +276,24 @@ struct Index {
     // console.info('Index', `全局文章索引变化: ${this.globalCurrentIndex}`)
     // 索引变化时，文章选择逻辑由RSSArticleList处理
     // 这里只需要记录日志
+  }
+
+  /**
+   * 从数据库加载文章详情
+   */
+  private async loadArticleFromDB(articleId: string) {
+    console.info('Index', `loadArticleFromDB calling for ${articleId}`)
+    try {
+      const article = await RSSDataService.getArticleById(articleId)
+      if (article) {
+        console.info('Index', `loadArticleFromDB success: ${article.title}`)
+        this.selectedArticle = article
+      } else {
+        console.error('Index', `loadArticleFromDB returned null for ${articleId}`)
+      }
+    } catch (error) {
+      console.error('Index', `从数据库加载文章失败: ${articleId}`, error)
+    }
   }
 
   // 文章切换回调已移除，现在直接使用全局状态管理：
@@ -370,9 +395,15 @@ struct Index {
       // 恢复第一栏折叠状态并同步到全局状态
       const savedCollapseState = PreferencesUtil.getFirstColumnCollapseStateSync()
       GlobalState.setFirstColumnCollapsed(savedCollapseState)
-      
+
+      // 恢复第二栏折叠状态
+      const savedSecondCollapseState = PreferencesUtil.getSecondColumnCollapseStateSync()
+      GlobalState.setSecondColumnCollapsed(savedSecondCollapseState)
+
       // 恢复选中的RSS源
       const savedFeedId = PreferencesUtil.getSelectedFeedIdSync()
+      let feedSelected = false
+
       if (savedFeedId) {
         // 首先尝试从数据库获取RSS源
         try {
@@ -380,24 +411,51 @@ struct Index {
           const savedFeed = feeds.find(feed => feed.id === savedFeedId)
           if (savedFeed) {
             this.selectedFeed = savedFeed
+            feedSelected = true
             // 同步RSS源列表的选中状态
             if (this.rssFeelListRef) {
               this.rssFeelListRef.setSelectedFeed(savedFeed.id)
             }
+            // 通知全局状态选中的feed
+            GlobalState.selectFeed(savedFeed.id)
           }
         } catch (error) {
           // 降级到mock数据
           const savedFeed = mockRSSFeeds.find(feed => feed.id === savedFeedId)
           if (savedFeed) {
             this.selectedFeed = savedFeed
+            feedSelected = true
             // 同步RSS源列表的选中状态
             if (this.rssFeelListRef) {
               this.rssFeelListRef.setSelectedFeed(savedFeed.id)
             }
+            // 通知全局状态选中的feed
+            GlobalState.selectFeed(savedFeed.id)
           }
         }
       }
-      
+
+      // 如果没有保存的feed或恢复失败，自动选择第一个feed
+      if (!feedSelected) {
+        try {
+          const feeds = await RSSDataService.getAllFeeds()
+          if (feeds.length > 0) {
+            const firstFeed = feeds[0]
+            this.selectedFeed = firstFeed
+            // 同步RSS源列表的选中状态
+            if (this.rssFeelListRef) {
+              this.rssFeelListRef.setSelectedFeed(firstFeed.id)
+            }
+            // 通知全局状态选中的feed
+            GlobalState.selectFeed(firstFeed.id)
+            // 保存选中的feed ID
+            PreferencesUtil.saveSelectedFeedIdSync(firstFeed.id)
+          }
+        } catch (error) {
+          console.error('Index', '自动选择第一个feed失败:', JSON.stringify(error))
+        }
+      }
+
       // 恢复列宽度（带边界检查）
       const savedFirstWidth = PreferencesUtil.getFirstColumnWidthSync()
       const savedSecondWidth = PreferencesUtil.getSecondColumnWidthSync()
@@ -407,7 +465,7 @@ struct Index {
       if (savedSecondWidth >= 250 && savedSecondWidth <= 400) {
         this.secondColumnWidth = savedSecondWidth
       }
-      
+
       // console.info('Index', `状态恢复完成 - 折叠状态: ${this.isFirstColumnCollapsed}, 选中RSS源: ${this.selectedFeed ? this.selectedFeed.title : '无'}`)
     } catch (error) {
       console.error('Index', '状态恢复失败:', JSON.stringify(error))
@@ -460,41 +518,47 @@ struct Index {
         }
 
         // 第二栏：文章列表
-        Column() {
-          if (this.selectedFeed != undefined) {
-            RSSArticleList({
-              selectedFeed: this.selectedFeed,
-              isFirstColumnCollapsed: this.isFirstColumnCollapsed,
-              onRef: this.onRSSArticleListRef
-            })
-          } else {
-            RSSArticleList({
-              selectedFeed: undefined,
-              isFirstColumnCollapsed: this.isFirstColumnCollapsed,
-              onRef: this.onRSSArticleListRef
-            })
+        if (!this.isSecondColumnCollapsed) {
+          Column() {
+            if (this.selectedFeed != undefined) {
+              RSSArticleList({
+                selectedFeed: this.selectedFeed,
+                isFirstColumnCollapsed: this.isFirstColumnCollapsed,
+                onRef: this.onRSSArticleListRef
+              })
+            } else {
+              RSSArticleList({
+                selectedFeed: undefined,
+                isFirstColumnCollapsed: this.isFirstColumnCollapsed,
+                onRef: this.onRSSArticleListRef
+              })
+            }
           }
+          .width(this.secondColumnWidth)
+          .height("100%")
+          .backgroundColor("#ffffff")
+          .transition(TransitionEffect.translate({ x: -this.secondColumnWidth })
+            .animation({ duration: 300, curve: Curve.EaseInOut }))
         }
-        .width(this.secondColumnWidth)
-        .height("100%")
-        .backgroundColor("#ffffff")
 
         // 分割线
-        Divider()
-          .vertical(true)
-          .color("#e0e0e0")
-          .strokeWidth(3)
-          .gesture(
-            PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
-              .onActionUpdate((event: GestureEvent) => {
-                let newSecondWidth = this.secondColumnWidth + event.offsetX
-                newSecondWidth = Math.max(250, Math.min(400, newSecondWidth)) // 范围250-400
-                this.secondColumnWidth = newSecondWidth
-              })
-              .onActionEnd(() => {
-                PreferencesUtil.saveSecondColumnWidthSync(this.secondColumnWidth)
-              })
-          )
+        if (!this.isSecondColumnCollapsed) {
+          Divider()
+            .vertical(true)
+            .color("#e0e0e0")
+            .strokeWidth(3)
+            .gesture(
+              PanGesture({ direction: PanDirection.Horizontal, fingers: 1 })
+                .onActionUpdate((event: GestureEvent) => {
+                  let newSecondWidth = this.secondColumnWidth + event.offsetX
+                  newSecondWidth = Math.max(250, Math.min(400, newSecondWidth)) // 范围250-400
+                  this.secondColumnWidth = newSecondWidth
+                })
+                .onActionEnd(() => {
+                  PreferencesUtil.saveSecondColumnWidthSync(this.secondColumnWidth)
+                })
+            )
+        }
 
         // 第三栏：文章详情
         Column() {

@@ -1,5 +1,6 @@
 import { RSSArticle, RSSFeed, mockRSSArticles, RSSDataService } from '../model/RSSModel'
 import { DatabaseManager } from '../model/DatabaseManager'
+import RSSRefreshService from '../service/RSSRefreshService'
 import { GlobalState } from '../model/GlobalState'
 
 @Component
@@ -10,6 +11,7 @@ export default struct RSSArticleList {
   @State showUnreadOnly: boolean = false
   @State filteredArticleList: RSSArticle[] = []
   @State retainedReadArticleIds: string[] = []
+  @State isRefreshing: boolean = false
 
   onRef?: (ref: RSSArticleList) => void
   @Prop isFirstColumnCollapsed: boolean = false
@@ -79,6 +81,11 @@ export default struct RSSArticleList {
   }
 
   private initializeArticleList() {
+    // 恢复选中状态（如果存在）
+    if (this.globalSelectedArticleId && !this.selectedArticleId) {
+      this.selectedArticleId = this.globalSelectedArticleId
+    }
+
     if (this.selectedFeed != undefined) {
       this.loadArticles()
     } else {
@@ -196,20 +203,30 @@ export default struct RSSArticleList {
     if (this.selectedFeed) {
       try {
         let articles: RSSArticle[] = []
-        
+
         if (this.isSpecialOption(this.selectedFeed.id)) {
           articles = await this.loadSpecialOptionArticles(this.selectedFeed.id)
         } else {
           articles = await RSSDataService.getArticlesByFeedId(this.selectedFeed.id)
+
           if (articles.length === 0) {
             articles = mockRSSArticles.filter(article => article.feedId === this.selectedFeed?.id)
           }
         }
-        
+
         this.articleList = articles
         this.updateFilteredList()
         this.articleList = [...this.articleList]
-        
+
+        // 检查当前选中的文章是否在列表中，如果不在，选中第一篇文章
+        const isCurrentArticleInList = this.selectedArticleId &&
+          this.filteredArticleList.some(a => a.id === this.selectedArticleId)
+
+        if (this.filteredArticleList.length > 0 && !isCurrentArticleInList) {
+          // 自动选中第一篇文章
+          await this.selectArticleByGlobalIndex(0)
+        }
+
       } catch (error) {
         console.error('RSSArticleList', '加载文章失败:', JSON.stringify(error))
         this.articleList = []
@@ -424,7 +441,8 @@ export default struct RSSArticleList {
         .backgroundColor("#f7f7f7")
         .border({ width: { bottom: 1 }, color: "#e0e0e0" })
 
-        List() {
+        Refresh({ refreshing: $$this.isRefreshing }) {
+          List() {
           ForEach(this.filteredArticleList, (article: RSSArticle, index: number) => {
             ListItem() {
               this.ArticleItemView(article)
@@ -494,9 +512,30 @@ export default struct RSSArticleList {
           })
         }
         .width("100%")
-        .layoutWeight(1)
+        .height("100%")
         .backgroundColor("#ffffff")
         .divider({ strokeWidth: 0.5, color: '#f0f0f0', startMargin: 16, endMargin: 0 })
+        }
+        .width("100%")
+        .layoutWeight(1)
+        .onRefreshing(async () => {
+          this.isRefreshing = true
+          if (this.selectedFeed) {
+            try {
+              if (!this.isSpecialOption(this.selectedFeed.id)) {
+                // Number conversion for normal feeds
+                const feedId = Number(this.selectedFeed.id)
+                if (!isNaN(feedId)) {
+                   await RSSRefreshService.refreshSingleFeed(feedId)
+                }
+              }
+              await this.loadArticles()
+            } catch (error) {
+              console.error('RSSArticleList', 'Refresh failed:', error)
+            }
+          }
+          this.isRefreshing = false
+        })
       } else {
         Column() {
           Row() {
@@ -548,6 +587,21 @@ export default struct RSSArticleList {
     .width("100%")
     .height("100%")
     .backgroundColor("#f5f5f5")
+    .gesture(
+      SwipeGesture({ direction: SwipeDirection.Horizontal })
+        .onAction((event: GestureEvent) => {
+          if (event && event.angle !== undefined) {
+             // 0度向右，180度向左
+             if (Math.abs(event.angle) < 90) {
+               // Swipe Right -> Show Panel 1 (Expand)
+               GlobalState.setFirstColumnCollapsed(false)
+             } else {
+               // Swipe Left -> Hide Panel 1 (Collapse)
+               GlobalState.setFirstColumnCollapsed(true)
+             }
+          }
+        })
+    )
   }
 
   @Builder
