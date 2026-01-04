@@ -66,6 +66,7 @@ export struct RSSFeedList {
   }
 
   @State isRefreshing: boolean = false
+  private inputController: TextInputController = new TextInputController()
 
   async aboutToAppear() {
     RSSRefreshService.registerRefreshCompleteCallback(this.refreshCompleteHandler)
@@ -533,7 +534,10 @@ export struct RSSFeedList {
   addSubscription() {
     this.showAddInput = true
     this.addInputType = 'subscription'
-    this.addInputValue = ''
+    this.addInputValue = 'https://'
+    setTimeout(() => {
+      this.inputController.caretPosition(8)
+    }, 100)
   }
 
   addFolder() {
@@ -662,36 +666,27 @@ export struct RSSFeedList {
       throw new Error('请输入有效的URL（需要以http://或https://开头）')
     }
 
-    const newFeedId = await FeedDAO.addFeed({
-      url: url,
-      title: url,
-      description: '',
-      link: '',
-      language: '',
-      lastBuildDate: '',
-      imageUrl: '',
-      category: '',
-      isActive: true,
-      sortOrder: 0
-    })
+    this.refreshProgress = `正在验证并添加RSS源: ${url}`
 
-    this.refreshProgress = `正在获取RSS源内容: ${url}`
-    
     try {
-      await RSSRefreshService.refreshSingleFeed(newFeedId)
+      const result = await RSSService.addRSSFeed(url)
       
-      this.refreshProgress = `RSS源添加完成: ${url}`
-      
+      if (result.success) {
+        this.refreshProgress = `RSS源添加成功: ${url}`
+      } else {
+        throw new Error(result.error || '添加失败')
+      }
+
       setTimeout(() => {
         this.refreshProgress = ''
       }, 2000)
-      
-    } catch (refreshError) {
-      this.refreshProgress = `RSS源已添加，但内容获取失败: ${refreshError}`
-      
-      setTimeout(() => {
-        this.refreshProgress = ''
-      }, 3000)
+
+    } catch (error) {
+       this.refreshProgress = ''
+       this.operationError = `添加失败: ${error.message || error}`
+       setTimeout(() => {
+         this.operationError = null
+       }, 3000)
     }
     
     await Promise.all([
@@ -1229,7 +1224,8 @@ export struct RSSFeedList {
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
       } else {
-        List() {
+        Refresh({ refreshing: $$this.isRefreshing }) {
+          List() {
           ForEach(this.specialFeeds, (feed: RSSFeed) => {
             ListItem() {
               Row() {
@@ -1281,6 +1277,7 @@ export struct RSSFeedList {
               Row() {
                 TextInput({ 
                   text: this.addInputValue,
+                  controller: this.inputController,
                   placeholder: this.addInputType === 'subscription' ? '请输入RSS源URL' : 
                               this.addInputType === 'folder' ? '请输入文件夹名称' :
                               this.addInputType === 'icon' ? '请输入图标URL' : ''
@@ -1542,9 +1539,15 @@ export struct RSSFeedList {
           }
         }
         .width('100%')
-        .layoutWeight(1)
+        .height('100%')
         .backgroundColor('#fff')
         .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick | ResponseType.LongPress)
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .onRefreshing(() => {
+        this.fullRefresh()
+      })
       }
 
         if (this.refreshProgress !== '' || this.operationError !== null) {

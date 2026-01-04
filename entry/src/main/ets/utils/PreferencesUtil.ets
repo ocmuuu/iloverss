@@ -13,6 +13,7 @@ interface KeysInterface {
   FIRST_COLUMN_WIDTH: string
   SECOND_COLUMN_WIDTH: string
   IMAGE_CACHE_ENABLED: string
+  IS_SECOND_COLUMN_COLLAPSED: string
 }
 
 // 存储键名
@@ -23,7 +24,8 @@ const KEYS: KeysInterface = {
   AUTO_REFRESH_INTERVAL: 'autoRefreshInterval', // 自动刷新间隔（分钟）
   FIRST_COLUMN_WIDTH: 'firstColumnWidth', // 第一栏宽度
   SECOND_COLUMN_WIDTH: 'secondColumnWidth', // 第二栏宽度
-  IMAGE_CACHE_ENABLED: 'imageCacheEnabled' // 图片缓存是否启用
+  IMAGE_CACHE_ENABLED: 'imageCacheEnabled', // 图片缓存是否启用
+  IS_SECOND_COLUMN_COLLAPSED: 'isSecondColumnCollapsed' // 第二栏是否折叠
 }
 
 /**
@@ -138,6 +140,43 @@ export class PreferencesUtil {
 
     try {
       const isCollapsed = PreferencesUtil.preferences.getSync(KEYS.IS_FIRST_COLUMN_COLLAPSED, false) as boolean
+      return isCollapsed
+    } catch (error) {
+      return false
+    }
+  }
+
+  /**
+   * 同步保存第二栏折叠状态
+   * @param isCollapsed 是否折叠
+   */
+  static saveSecondColumnCollapseStateSync(isCollapsed: boolean): void {
+    if (!PreferencesUtil.preferences) {
+      console.error('PreferencesUtil', '首选项未初始化')
+      return
+    }
+
+    try {
+      PreferencesUtil.preferences.putSync(KEYS.IS_SECOND_COLUMN_COLLAPSED, isCollapsed)
+      PreferencesUtil.preferences.flush() // 异步刷新到磁盘
+      console.info('PreferencesUtil', `同步保存第二栏折叠状态: ${isCollapsed}`)
+    } catch (error) {
+      console.error('PreferencesUtil', '同步保存第二栏折叠状态失败:', JSON.stringify(error))
+    }
+  }
+
+  /**
+   * 同步获取第二栏折叠状态
+   * @returns 折叠状态，默认为false
+   */
+  static getSecondColumnCollapseStateSync(): boolean {
+    if (!PreferencesUtil.preferences) {
+      console.error('PreferencesUtil', '首选项未初始化')
+      return false
+    }
+
+    try {
+      const isCollapsed = PreferencesUtil.preferences.getSync(KEYS.IS_SECOND_COLUMN_COLLAPSED, false) as boolean
       return isCollapsed
     } catch (error) {
       return false

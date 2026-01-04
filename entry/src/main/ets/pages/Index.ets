@@ -20,6 +20,7 @@ struct Index {
   @State selectedArticle: RSSArticle | undefined = undefined
   @State isInitialized: boolean = false // 标记是否已初始化
   @State @Watch('onRefreshTriggerChanged') refreshTrigger: number = 0 // 用于触发列表刷新
+  private loadedFeedId: string = '' // 跟踪已加载文章的feed ID，避免重复加载
 
   // 监听全局选中的RSS源ID变化
   @StorageLink('selectedFeedId') @Watch('onGlobalFeedChanged') globalSelectedFeedId: string = ''
@@ -150,26 +151,43 @@ struct Index {
           if (PreferencesUtil.isInitialized()) {
             PreferencesUtil.saveSelectedFeedIdSync(targetFeed.id)
           }
-          return
+          // Don't return early - continue to load articles below
+        } else {
+          // 数据库查询失败时，先尝试降级到mock数据
+          const mockFeed = mockRSSFeeds.find(feed => feed.id === this.globalSelectedFeedId)
+          if (mockFeed) {
+            this.selectedFeed = mockFeed
+            if (this.rssFeelListRef) {
+              this.rssFeelListRef.setSelectedFeed(mockFeed.id)
+            }
+          } else {
+            // 进一步检查是否为特殊标签（今天/收藏/全部未读）
+            const specialFeed = this.getSpecialFeedById(this.globalSelectedFeedId)
+            if (specialFeed) {
+              this.selectedFeed = specialFeed
+              if (this.rssFeelListRef) {
+                this.rssFeelListRef.setSelectedFeed(specialFeed.id)
+              }
+            }
+          }
         }
       } catch (error) {
         console.error('Index', '根据ID加载RSS源失败，尝试使用mock数据:', JSON.stringify(error))
-      }
-
-      // 数据库查询失败时，先尝试降级到mock数据
-      const mockFeed = mockRSSFeeds.find(feed => feed.id === this.globalSelectedFeedId)
-      if (mockFeed) {
-        this.selectedFeed = mockFeed
-        if (this.rssFeelListRef) {
-          this.rssFeelListRef.setSelectedFeed(mockFeed.id)
-        }
-      } else {
-        // 进一步检查是否为特殊标签（今天/收藏/全部未读）
-        const specialFeed = this.getSpecialFeedById(this.globalSelectedFeedId)
-        if (specialFeed) {
-          this.selectedFeed = specialFeed
+        // 数据库查询失败时，先尝试降级到mock数据
+        const mockFeed = mockRSSFeeds.find(feed => feed.id === this.globalSelectedFeedId)
+        if (mockFeed) {
+          this.selectedFeed = mockFeed
           if (this.rssFeelListRef) {
-            this.rssFeelListRef.setSelectedFeed(specialFeed.id)
+            this.rssFeelListRef.setSelectedFeed(mockFeed.id)
+          }
+        } else {
+          // 进一步检查是否为特殊标签（今天/收藏/全部未读）
+          const specialFeed = this.getSpecialFeedById(this.globalSelectedFeedId)
+          if (specialFeed) {
+            this.selectedFeed = specialFeed
+            if (this.rssFeelListRef) {
+              this.rssFeelListRef.setSelectedFeed(specialFeed.id)
+            }
           }
         }
       }
@@ -180,8 +198,52 @@ struct Index {
     }
 
     // 切换RSS源后，刷新文章列表
-    if (this.rssArticleListRef) {
+    // 必须检查 isSecondColumnCollapsed，因为当面板折叠时，rssArticleListRef 可能仍保留着旧引用，但组件已不在树中
+    if (this.rssArticleListRef && !this.isSecondColumnCollapsed) {
       this.rssArticleListRef.loadArticles()
+      this.loadedFeedId = this.selectedFeed?.id || ''
+    } else if (this.selectedFeed && this.loadedFeedId !== this.selectedFeed.id) {
+      // Only load articles if this is a different feed than what's currently loaded
+      await this.loadAndSelectFirstArticle(this.selectedFeed)
+      this.loadedFeedId = this.selectedFeed.id
+    }
+  }
+
+  /**
+   * Load and select first article when panels are collapsed
+   */
+  private async loadAndSelectFirstArticle(feed: RSSFeed) {
+    try {
+      let articles: RSSArticle[] = []
+
+      // Load articles based on feed type
+      if (feed.id === 'today') {
+        articles = await RSSDataService.getTodayArticles()
+      } else if (feed.id === 'favorites') {
+        articles = await RSSDataService.getFavoriteArticles()
+      } else if (feed.id === 'unread') {
+        articles = await RSSDataService.getUnreadArticles()
+      } else {
+        articles = await RSSDataService.getArticlesByFeedId(feed.id)
+      }
+
+      // Select first article if available
+      if (articles.length > 0) {
+        const firstArticle = articles[0]
+        GlobalState.selectArticle(firstArticle.id, 0)
+        GlobalState.setArticleListTotal(articles.length)
+        GlobalState.setCurrentArticleList(articles)
+
+        // Load article details
+        this.selectedArticle = firstArticle
+
+        // Mark as read if it was unread
+        if (!firstArticle.readStatus) {
+          await GlobalState.updateArticleReadStatus(firstArticle.id, true)
+        }
+      }
+    } catch (error) {
+      console.error('Index', 'Failed to load and select first article:', error)
     }
   }
 
@@ -246,12 +308,12 @@ struct Index {
    */
   onGlobalArticleChanged() {
     console.info('Index', `Global Article Changed: ${this.globalSelectedArticleId}, SecondColCollapsed: ${this.isSecondColumnCollapsed}, ListRef: ${!!this.rssArticleListRef}`)
-    
+
     if (this.globalSelectedArticleId && this.rssArticleListRef && !this.isSecondColumnCollapsed) {
       // 从文章列表中找到对应的文章
       const articleList = this.rssArticleListRef.getCurrentArticleList()
       const article = articleList.find(a => a.id === this.globalSelectedArticleId)
-      
+
       if (article) {
         this.selectedArticle = article
         // console.info('Index', `更新本地选中文章: ${article.title}`)
@@ -288,6 +350,13 @@ struct Index {
       if (article) {
         console.info('Index', `loadArticleFromDB success: ${article.title}`)
         this.selectedArticle = article
+
+        // Mark as read if it was unread (important for navigation in collapsed mode)
+        if (!article.readStatus) {
+          await GlobalState.updateArticleReadStatus(article.id, true)
+          // Update local state to reflect the change
+          article.readStatus = true
+        }
       } else {
         console.error('Index', `loadArticleFromDB returned null for ${articleId}`)
       }

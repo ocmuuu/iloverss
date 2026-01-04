@@ -137,22 +137,26 @@ export default struct RSSArticleList {
     GlobalState.setArticleListTotal(this.filteredArticleList.length)
     GlobalState.setCurrentArticleList(this.filteredArticleList)
     
-    const currentIndex = this.getCurrentArticleIndex()
-    if (currentIndex === -1 && this.selectedArticleId) {
-      // 在以下情况下，文章可能因为过滤而暂时不在列表中，但仍需保持详情页内容：
-      // 1. 当前 RSS 源为 “全部未读” (id === 'unread')
-      // 2. 已对当前源开启了 “仅显示未读”(showUnreadOnly === true)
-      const isSpecialUnreadList = this.selectedFeed && this.selectedFeed.id === 'unread'
+    // 使用全局选中的ID来校正索引，而不是强制使用本地ID（本地ID可能滞后）
+    const globalSelectedId = AppStorage.get<string>('selectedArticleId')
+    
+    let indexInNewList = -1
+    if (globalSelectedId) {
+      indexInNewList = this.filteredArticleList.findIndex(a => a.id === globalSelectedId)
+    }
 
-      // 若同时满足 not isSpecialUnreadList 且未启用未读过滤，则重置选中状态
+    if (indexInNewList >= 0) {
+      // 全局选中的文章在当前列表中存在，更新索引以匹配位置
+      AppStorage.set('currentArticleIndex', indexInNewList)
+    } else if (globalSelectedId) {
+      // 全局选中的文章不在当前列表中
+      const isSpecialUnreadList = this.selectedFeed && this.selectedFeed.id === 'unread'
+      
+      // 若未开启未读过滤且不是特殊列表，则说明文章确实消失了（需清除选中）
       if (!isSpecialUnreadList && !this.showUnreadOnly) {
         AppStorage.set('currentArticleIndex', -1)
         AppStorage.set('selectedArticleId', '')
       }
-      // 否则保持现有 selectedArticleId 和详情页状态不变
-    } else if (currentIndex >= 0) {
-      AppStorage.set('currentArticleIndex', currentIndex)
-      AppStorage.set('selectedArticleId', this.selectedArticleId)
     }
   }
 
