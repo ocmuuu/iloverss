@@ -888,6 +888,10 @@ export struct RSSFeedList {
       if (this.totalFeedsToRefresh === 0) {
         this.refreshProgress = '没有需要刷新的FEED'
         await this.loadUnreadCounts()
+        setTimeout(() => {
+          this.refreshProgress = ''
+          this.isRefreshing = false
+        }, 1500)
         return
       }
       
@@ -1175,6 +1179,7 @@ export struct RSSFeedList {
           .fontWeight(FontWeight.Medium)
           .fontColor('#000')
           .layoutWeight(1)
+          .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick)
 
         Image(this.isRefreshing ? $r("app.media.loading") : $r("app.media.refresh"))
           .width(20)
@@ -1194,7 +1199,7 @@ export struct RSSFeedList {
           .height(20)
           .fillColor('#666666')
 
-          .bindContextMenu(this.createAddMenu(), ResponseType.RightClick | ResponseType.LongPress)
+          .bindContextMenu(this.createAddMenu(), ResponseType.RightClick)
           .onClick(() => {
             this.addSubscription()
           })
@@ -1224,8 +1229,9 @@ export struct RSSFeedList {
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
       } else {
-        Refresh({ refreshing: $$this.isRefreshing }) {
-          List() {
+        // 不用 Refresh 绑定 isRefreshing：否则会「今日」上方出现大块下拉刷新动效，破坏布局；
+        // 全量刷新仅通过标题栏图标（loading）与底部进度文案反馈即可。
+        List() {
           ForEach(this.specialFeeds, (feed: RSSFeed) => {
             ListItem() {
               Row() {
@@ -1259,6 +1265,7 @@ export struct RSSFeedList {
               .padding({ left: 16, right: 16 })
               .backgroundColor(this.selectedFeedId === feed.id ? '#f0f7ff' : '#fff')
               .alignItems(VerticalAlign.Center)
+              .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick)
             }
             .onClick(() => {
               this.selectedFeedId = feed.id
@@ -1420,13 +1427,13 @@ export struct RSSFeedList {
               .padding({ left: 16, right: 16 })
               .backgroundColor('#fff')
               .alignItems(VerticalAlign.Center)
+              .bindContextMenu(this.createFolderContextMenu(folder), ResponseType.RightClick)
             }
             .onClick(() => {
               if (this.editingFolderId !== folder.id) {
                 this.toggleFolderExpanded(folder.id)
               }
             })
-            .bindContextMenu(this.createFolderContextMenu(folder), ResponseType.RightClick | ResponseType.LongPress)
 
             if (this.expandedFolders.has(folder.id)) {
               ForEach(this.feeds.filter(feed => feed.folderId === folder.id), (feed: RSSFeedWithUnread) => {
@@ -1453,12 +1460,12 @@ export struct RSSFeedList {
                   .padding({ left: 16, right: 16 })
                   .backgroundColor(this.selectedFeedId === feed.id.toString() ? '#f0f7ff' : '#fff')
                   .alignItems(VerticalAlign.Center)
+                  .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick)
                 }
                 .onClick(() => {
                   this.selectedFeedId = feed.id.toString()
                   AppStorage.set('selectedFeedId', feed.id.toString())
                 })
-                .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick | ResponseType.LongPress)
               }, (feed: RSSFeedWithUnread) => `${folder.id}_${feed.id}_${this.uiUpdateTrigger}`)
 
               if (this.feeds.filter(feed => feed.folderId === folder.id).length === 0) {
@@ -1479,6 +1486,7 @@ export struct RSSFeedList {
                   .padding({ left: 16, right: 16 })
                   .backgroundColor('#fff')
                   .alignItems(VerticalAlign.Center)
+                  .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick)
                 }
               }
             }
@@ -1505,12 +1513,12 @@ export struct RSSFeedList {
               .padding({ left: 16, right: 16 })
               .backgroundColor(this.selectedFeedId === feed.id.toString() ? '#f0f7ff' : '#fff')
               .alignItems(VerticalAlign.Center)
+              .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick)
             }
             .onClick(() => {
               this.selectedFeedId = feed.id.toString()
               AppStorage.set('selectedFeedId', feed.id.toString())
             })
-            .bindContextMenu(this.createFeedContextMenu(feed), ResponseType.RightClick | ResponseType.LongPress)
           }, (feed: RSSFeedWithUnread) => `${feed.id.toString()}_${this.uiUpdateTrigger}`)
 
           if (this.feeds.length === 0 && this.folders.length === 0) {
@@ -1535,19 +1543,15 @@ export struct RSSFeedList {
               .padding({ top: 40, bottom: 40 })
               .justifyContent(FlexAlign.Center)
               .alignItems(HorizontalAlign.Center)
+              .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick)
             }
           }
         }
         .width('100%')
         .height('100%')
         .backgroundColor('#fff')
-        .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick | ResponseType.LongPress)
-      }
-      .width('100%')
-      .layoutWeight(1)
-      .onRefreshing(() => {
-        this.fullRefresh()
-      })
+        .bindContextMenu(this.createGeneralContextMenu(), ResponseType.RightClick)
+        .layoutWeight(1)
       }
 
         if (this.refreshProgress !== '' || this.operationError !== null) {

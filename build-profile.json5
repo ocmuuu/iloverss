@@ -5,13 +5,26 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\zouyu\\.ohos\\config\\default_iloverss_l09G8PkXmMdv-eKP3dImbV5XP6dI-HHv5MQpjqkLw2Y=.cer",
+          "certpath": "C:/Users/chaon/.ohos/config/default_iloverss_NaE4JAjTaGEZsv5q-HkQACHXtGtPQ5S9XifHYMed0yA=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001BE5443161CD24FD372734F8BFD2FEF671A32ED2C308AFEDAE7FFE64DF38FA3DE0EE9560886EF9E0",
-          "profile": "C:\\Users\\zouyu\\.ohos\\config\\default_iloverss_l09G8PkXmMdv-eKP3dImbV5XP6dI-HHv5MQpjqkLw2Y=.p7b",
+          "keyPassword": "0000001B12151BE88DA7258C83D8D9C36A7152B009A09ED3E3BB141461919F8A9C8A7484BDA49FE6177A2F",
+          "profile": "C:/Users/chaon/.ohos/config/default_iloverss_NaE4JAjTaGEZsv5q-HkQACHXtGtPQ5S9XifHYMed0yA=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\zouyu\\.ohos\\config\\default_iloverss_l09G8PkXmMdv-eKP3dImbV5XP6dI-HHv5MQpjqkLw2Y=.p12",
-          "storePassword": "0000001B3869C69A129E1042A8EFAAEBFDC030AEC5B811F9FC9F0B5741AE8F3EA9BADA950D35D64936E89E"
+          "storeFile": "C:/Users/chaon/.ohos/config/default_iloverss_NaE4JAjTaGEZsv5q-HkQACHXtGtPQ5S9XifHYMed0yA=.p12",
+          "storePassword": "0000001BA87589CE54F9E01D3EA8029A8852057AE64C267110500FF9EF58F1A20E324AF81A3AE14B9D330A"
+        }
+      },
+      {
+        "name": "iloverss",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "C:/App/iloverss/iloverss.p12",
+          "storePassword": "0000001AA0EAD409A306A00C5E12C48D2B1417860BC439213DF3BC4292C7D177DB03A75F6C3D3E7947BF",
+          "keyAlias": "iloverss",
+          "keyPassword": "0000001AFAEF1082A84843353838AFA4C0E5D67040630B3D1C65F3A89E59CC6C69B4BE4C1469A9D34A20",
+          "signAlg": "SHA256withECDSA",
+          "profile": "C:/App/iloverss/iloverssRelease.p7b",
+          "certpath": "C:/App/iloverss/iloverss.cer"
         }
       }
     ],
@@ -19,14 +32,24 @@
       {
         "name": "default",
         "signingConfig": "default",
-        "compatibleSdkVersion": "6.0.0(20)",
+        "compileSdkVersion": "6.0.2(22)",
+        "compatibleSdkVersion": "6.0.2(22)",
         "runtimeOS": "HarmonyOS",
         "bundleName": "com.mznm.iloverss",
-        "targetSdkVersion": "6.0.0(20)"
+        "targetSdkVersion": "6.0.2(22)"
+      },
+      {
+        "name": "release",
+        "signingConfig": "iloverss",
+        "compileSdkVersion": "6.0.2(22)",
+        "compatibleSdkVersion": "6.0.2(22)",
+        "runtimeOS": "HarmonyOS",
+        "bundleName": "com.mznm.iloverss",
+        "targetSdkVersion": "6.0.2(22)"
       },
       {
         "name": "devicedebug",
-        "signingConfig": "devicedebug",
+        "signingConfig": "default",
         "compatibleSdkVersion": "6.0.0(20)",
         "runtimeOS": "HarmonyOS",
         "bundleName": "com.mznm.iloverss"
@@ -46,7 +69,8 @@
         {
           "name": "default",
           "applyToProducts": [
-            "default"
+            "default",
+            "release"
           ]
         },
         {
