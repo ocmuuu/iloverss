@@ -1,5 +1,6 @@
 import { RSSArticle, RSSFeed, mockRSSArticles, RSSDataService } from '../model/RSSModel'
 import { DatabaseManager } from '../model/DatabaseManager'
+import RSSRefreshService from '../service/RSSRefreshService'
 import { GlobalState } from '../model/GlobalState'
 
 @Component
@@ -10,6 +11,7 @@ export default struct RSSArticleList {
   @State showUnreadOnly: boolean = false
   @State filteredArticleList: RSSArticle[] = []
   @State retainedReadArticleIds: string[] = []
+  @State isRefreshing: boolean = false
 
   onRef?: (ref: RSSArticleList) => void
   @Prop isFirstColumnCollapsed: boolean = false
@@ -79,6 +81,11 @@ export default struct RSSArticleList {
   }
 
   private initializeArticleList() {
+    // 恢复选中状态（如果存在）
+    if (this.globalSelectedArticleId && !this.selectedArticleId) {
+      this.selectedArticleId = this.globalSelectedArticleId
+    }
+
     if (this.selectedFeed != undefined) {
       this.loadArticles()
     } else {
@@ -130,22 +137,26 @@ export default struct RSSArticleList {
     GlobalState.setArticleListTotal(this.filteredArticleList.length)
     GlobalState.setCurrentArticleList(this.filteredArticleList)
     
-    const currentIndex = this.getCurrentArticleIndex()
-    if (currentIndex === -1 && this.selectedArticleId) {
-      // 在以下情况下，文章可能因为过滤而暂时不在列表中，但仍需保持详情页内容：
-      // 1. 当前 RSS 源为 “全部未读” (id === 'unread')
-      // 2. 已对当前源开启了 “仅显示未读”(showUnreadOnly === true)
-      const isSpecialUnreadList = this.selectedFeed && this.selectedFeed.id === 'unread'
+    // 使用全局选中的ID来校正索引，而不是强制使用本地ID（本地ID可能滞后）
+    const globalSelectedId = AppStorage.get<string>('selectedArticleId')
+    
+    let indexInNewList = -1
+    if (globalSelectedId) {
+      indexInNewList = this.filteredArticleList.findIndex(a => a.id === globalSelectedId)
+    }
 
-      // 若同时满足 not isSpecialUnreadList 且未启用未读过滤，则重置选中状态
+    if (indexInNewList >= 0) {
+      // 全局选中的文章在当前列表中存在，更新索引以匹配位置
+      AppStorage.set('currentArticleIndex', indexInNewList)
+    } else if (globalSelectedId) {
+      // 全局选中的文章不在当前列表中
+      const isSpecialUnreadList = this.selectedFeed && this.selectedFeed.id === 'unread'
+      
+      // 若未开启未读过滤且不是特殊列表，则说明文章确实消失了（需清除选中）
       if (!isSpecialUnreadList && !this.showUnreadOnly) {
         AppStorage.set('currentArticleIndex', -1)
         AppStorage.set('selectedArticleId', '')
       }
-      // 否则保持现有 selectedArticleId 和详情页状态不变
-    } else if (currentIndex >= 0) {
-      AppStorage.set('currentArticleIndex', currentIndex)
-      AppStorage.set('selectedArticleId', this.selectedArticleId)
     }
   }
 
@@ -196,20 +207,30 @@ export default struct RSSArticleList {
     if (this.selectedFeed) {
       try {
         let articles: RSSArticle[] = []
-        
+
         if (this.isSpecialOption(this.selectedFeed.id)) {
           articles = await this.loadSpecialOptionArticles(this.selectedFeed.id)
         } else {
           articles = await RSSDataService.getArticlesByFeedId(this.selectedFeed.id)
+
           if (articles.length === 0) {
             articles = mockRSSArticles.filter(article => article.feedId === this.selectedFeed?.id)
           }
         }
-        
+
         this.articleList = articles
         this.updateFilteredList()
         this.articleList = [...this.articleList]
-        
+
+        // 检查当前选中的文章是否在列表中，如果不在，选中第一篇文章
+        const isCurrentArticleInList = this.selectedArticleId &&
+          this.filteredArticleList.some(a => a.id === this.selectedArticleId)
+
+        if (this.filteredArticleList.length > 0 && !isCurrentArticleInList) {
+          // 自动选中第一篇文章
+          await this.selectArticleByGlobalIndex(0)
+        }
+
       } catch (error) {
         console.error('RSSArticleList', '加载文章失败:', JSON.stringify(error))
         this.articleList = []
@@ -424,7 +445,8 @@ export default struct RSSArticleList {
         .backgroundColor("#f7f7f7")
         .border({ width: { bottom: 1 }, color: "#e0e0e0" })
 
-        List() {
+        Refresh({ refreshing: $$this.isRefreshing }) {
+          List() {
           ForEach(this.filteredArticleList, (article: RSSArticle, index: number) => {
             ListItem() {
               this.ArticleItemView(article)
@@ -494,9 +516,30 @@ export default struct RSSArticleList {
           })
         }
         .width("100%")
-        .layoutWeight(1)
+        .height("100%")
         .backgroundColor("#ffffff")
         .divider({ strokeWidth: 0.5, color: '#f0f0f0', startMargin: 16, endMargin: 0 })
+        }
+        .width("100%")
+        .layoutWeight(1)
+        .onRefreshing(async () => {
+          this.isRefreshing = true
+          if (this.selectedFeed) {
+            try {
+              if (!this.isSpecialOption(this.selectedFeed.id)) {
+                // Number conversion for normal feeds
+                const feedId = Number(this.selectedFeed.id)
+                if (!isNaN(feedId)) {
+                   await RSSRefreshService.refreshSingleFeed(feedId)
+                }
+              }
+              await this.loadArticles()
+            } catch (error) {
+              console.error('RSSArticleList', 'Refresh failed:', error)
+            }
+          }
+          this.isRefreshing = false
+        })
       } else {
         Column() {
           Row() {
@@ -548,6 +591,21 @@ export default struct RSSArticleList {
     .width("100%")
     .height("100%")
     .backgroundColor("#f5f5f5")
+    .gesture(
+      SwipeGesture({ direction: SwipeDirection.Horizontal })
+        .onAction((event: GestureEvent) => {
+          if (event && event.angle !== undefined) {
+             // 0度向右，180度向左
+             if (Math.abs(event.angle) < 90) {
+               // Swipe Right -> Show Panel 1 (Expand)
+               GlobalState.setFirstColumnCollapsed(false)
+             } else {
+               // Swipe Left -> Hide Panel 1 (Collapse)
+               GlobalState.setFirstColumnCollapsed(true)
+             }
+          }
+        })
+    )
   }
 
   @Builder

@@ -399,6 +399,25 @@ export class RSSDataService {
   }
 
   /**
+   * 根据ID获取单篇文章
+   */
+  static async getArticleById(articleId: string): Promise<RSSArticle | null> {
+    try {
+      const dbArticle = await ArticleDAO.getArticleByID(articleId)
+      if (dbArticle) {
+        return RSSModelConverter.dbArticleToArticle(dbArticle as RSSArticleDBExtended)
+      }
+      return null
+    } catch (error) {
+      hilog.error(0x0000, 'RSSDataService', `获取文章${articleId}失败: %{public}s`, JSON.stringify(error) ?? '')
+      
+      // 降级到mock数据
+      const mockArticle = mockRSSArticles.find(a => a.id === articleId)
+      return mockArticle || null
+    }
+  }
+
+  /**
    * 获取今天发布的文章
    */
   static async getTodayArticles(): Promise<RSSArticle[]> {

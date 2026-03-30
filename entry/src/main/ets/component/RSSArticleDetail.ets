@@ -41,6 +41,20 @@ interface ArticleImage {
   imageID: string
 }
 
+class ArticleNavigationProxy {
+  constructor() {}
+
+  previous() {
+    console.info('RSSArticleDetail', 'JS Proxy: previous triggered')
+    GlobalState.switchToPreviousArticle()
+  }
+
+  next() {
+    console.info('RSSArticleDetail', 'JS Proxy: next triggered')
+    GlobalState.switchToNextArticle()
+  }
+}
+
 declare function getContext(component?: ESObject): common.UIAbilityContext
 
 @Component
@@ -59,6 +73,7 @@ export default struct RSSArticleDetail {
   @State private loadRetryCount: number = 0
   private readonly maxLoadRetries: number = 5
   private readonly retryDelayMs: number = 2000
+  private navigationProxy: ArticleNavigationProxy = new ArticleNavigationProxy()
 
   @State private pendingArticle: RSSArticle | undefined = undefined
   @State private feedTitle: string = ''
@@ -69,6 +84,7 @@ export default struct RSSArticleDetail {
   @StorageLink('keyboardNavigationEnabled') keyboardEnabled: boolean = true
   @StorageLink('refreshTrigger') @Watch('onGlobalRefreshTriggered') globalRefreshTrigger: number = 0
   @StorageLink('showKeyboardHints') showKeyboardHints: boolean = true
+  @StorageLink('isSecondColumnCollapsed') isSecondColumnCollapsed: boolean = false
 
   aboutToAppear() {
     this.initializeArticle()
@@ -92,6 +108,7 @@ export default struct RSSArticleDetail {
   }
 
   onSelectedArticleChanged() {
+    console.info('RSSArticleDetail', `Prop selectedArticle changed: ${this.selectedArticle?.id} - ${this.selectedArticle?.title}`)
     if (this.selectedArticle) {
       this.currentArticleId = this.selectedArticle.id
       this.loadFeedTitle()
@@ -172,6 +189,7 @@ export default struct RSSArticleDetail {
       this.showHelp = false
       
       const baseHtml = this.generateOptimizedArticleHTML(this.selectedArticle)
+      console.info('RSSArticleDetail', `Reloading Web Content for: ${this.selectedArticle.title}`)
 
       // 替换已缓存图片为 content URI
       const finalHtml = await this.replaceCachedImages(baseHtml)
@@ -422,6 +440,14 @@ export default struct RSSArticleDetail {
   build() {
     Column() {
       Row() {
+        Image(this.isSecondColumnCollapsed ? $r("app.media.show") : $r("app.media.hide"))
+            .width(20)
+            .height(20)
+            .margin({ right: 12 })
+            .onClick(() => {
+              GlobalState.toggleSecondColumn()
+            })
+
         Blank()
         
         Row() {
@@ -500,6 +526,12 @@ export default struct RSSArticleDetail {
           src: '',
           controller: this.webController 
         })
+        .javaScriptProxy({
+          object: this.navigationProxy,
+          name: "rssApp",
+          methodList: ["previous", "next"],
+          controller: this.webController
+        })
         .focusable(false)
         .width("100%")
         .height("100%")
@@ -516,6 +548,10 @@ export default struct RSSArticleDetail {
         .onPageEnd(() => {
           this.isLoadingArticle = false
           // 不在 onPageEnd 重置 loadRetryCount，避免主框架加载错误导致无限重试循环
+          
+          // 注入手势检测脚本
+          this.injectGestureScript()
+
           if (this.currentArticleId === 'help_document') {
             return
           }
@@ -592,6 +628,20 @@ export default struct RSSArticleDetail {
         }
       }
       .layoutWeight(1)
+      .parallelGesture(
+        PanGesture({ direction: PanDirection.Horizontal })
+          .onActionEnd((event: GestureEvent) => {
+            if (event && event.offsetX !== undefined) {
+               if (event.offsetX > 0) {
+                 // Pan/Swipe Right -> Show Panel 2 (Expand)
+                 GlobalState.setSecondColumnCollapsed(false)
+               } else {
+                 // Pan/Swipe Left -> Hide Panel 2 (Collapse)
+                 GlobalState.setSecondColumnCollapsed(true)
+               }
+            }
+          })
+      )
     }
     .width("100%")
     .height("100%")
@@ -600,5 +650,55 @@ export default struct RSSArticleDetail {
     .onKeyEvent((event: KeyEvent): boolean => {
       return this.handleKeyboardEvent(event)
     })
+  }
+
+  private injectGestureScript() {
+    const script = `
+      (function() {
+        let startY = 0;
+        let isDragging = false;
+        const THRESHOLD = 150; // 触发阈值
+        
+        document.addEventListener('touchstart', (e) => {
+          startY = e.touches[0].clientY;
+          isDragging = true;
+        }, { passive: true });
+        
+        document.addEventListener('touchend', (e) => {
+          if (!isDragging) return;
+          isDragging = false;
+          
+          const endY = e.changedTouches[0].clientY;
+          const deltaY = endY - startY;
+          const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+          const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+          const clientHeight = document.documentElement.clientHeight || document.body.clientHeight;
+          
+          // Pull Down at Top (Previous)
+          // 允许一定的误差 (scrollTop <= 5)
+          if (scrollTop <= 5 && deltaY > THRESHOLD) {
+            console.log('Gesture: Trigger Previous. deltaY=' + deltaY);
+            if (window.rssApp && window.rssApp.previous) {
+              window.rssApp.previous();
+            }
+          }
+          
+          // Pull Up at Bottom (Next)
+          // 允许一定的误差 (scrollTop + clientHeight >= scrollHeight - 5)
+          if (scrollTop + clientHeight >= scrollHeight - 5 && deltaY < -THRESHOLD) {
+            console.log('Gesture: Trigger Next. deltaY=' + deltaY);
+            if (window.rssApp && window.rssApp.next) {
+              window.rssApp.next();
+            }
+          }
+        }, { passive: true });
+      })();
+    `;
+    
+    try {
+      this.webController.runJavaScript(script);
+    } catch (e) {
+      console.error('RSSArticleDetail', 'Inject script failed', e);
+    }
   }
 } 

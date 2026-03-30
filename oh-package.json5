@@ -10,5 +10,10 @@
   "main": "",
   "version": "1.2.3",
   "dependencies": {},
+    "deviceTypes": [
+    "phone",
+    "tablet",
+    "tv"
+  ],
   "dynamicDependencies": {}
 }

@@ -55,6 +55,7 @@ export class GlobalState {
     
     // UI状态管理
     AppStorage.setAndLink('isFirstColumnCollapsed', false)
+    AppStorage.setAndLink('isSecondColumnCollapsed', false)
     
     // 文章列表缓存（JSON字符串格式）
     AppStorage.setAndLink('currentArticleListJson', '[]')
@@ -191,37 +192,70 @@ export class GlobalState {
    */
   static switchToNextArticle(): Promise<boolean> {
     return new Promise((resolve) => {
-      const currentIndex = AppStorage.get<number>('currentArticleIndex') || 0
-      const totalArticles = AppStorage.get<number>('articleListTotal') || 0
+      const articles = GlobalState.getCurrentArticleList()
+      const totalArticles = articles.length
+      const currentId = AppStorage.get<string>('selectedArticleId')
+      
+      let currentIndex = AppStorage.get<number>('currentArticleIndex') ?? -1
+      
+      // 索引校正：如果当前ID对应的索引与存储的索引不一致，以ID为准
+      if (currentId) {
+        const actualIndex = articles.findIndex(a => a.id === currentId)
+        if (actualIndex !== -1 && actualIndex !== currentIndex) {
+          console.warn('GlobalState', `Next: Index mismatch (Store: ${currentIndex}, Actual: ${actualIndex}). Correcting...`)
+          currentIndex = actualIndex
+          AppStorage.set('currentArticleIndex', currentIndex)
+        }
+      }
       
       if (currentIndex < totalArticles - 1) {
         const newIndex = currentIndex + 1
         AppStorage.set('currentArticleIndex', newIndex)
+        
+        if (articles[newIndex]) {
+          AppStorage.set('selectedArticleId', articles[newIndex].id)
+          console.info('GlobalState', `Next: Switched to ${articles[newIndex].title} (${newIndex}/${totalArticles})`)
+        }
+        
         AppStorage.set('refreshTrigger', Date.now())
-        console.info('GlobalState', `切换到下一篇文章: ${newIndex}`)
         resolve(true)
       } else {
-        console.info('GlobalState', '已是最后一篇文章')
+        console.info('GlobalState', 'Next: Already at last article')
         resolve(false)
       }
     })
   }
-  
-  /**
-   * 切换到上一篇文章
-   */
+
   static switchToPreviousArticle(): Promise<boolean> {
     return new Promise((resolve) => {
-      const currentIndex = AppStorage.get<number>('currentArticleIndex') || 0
+      const articles = GlobalState.getCurrentArticleList()
+      const currentId = AppStorage.get<string>('selectedArticleId')
       
+      let currentIndex = AppStorage.get<number>('currentArticleIndex') ?? -1
+
+      // 索引校正
+      if (currentId) {
+        const actualIndex = articles.findIndex(a => a.id === currentId)
+        if (actualIndex !== -1 && actualIndex !== currentIndex) {
+          console.warn('GlobalState', `Prev: Index mismatch (Store: ${currentIndex}, Actual: ${actualIndex}). Correcting...`)
+          currentIndex = actualIndex
+          AppStorage.set('currentArticleIndex', currentIndex)
+        }
+      }
+
       if (currentIndex > 0) {
         const newIndex = currentIndex - 1
         AppStorage.set('currentArticleIndex', newIndex)
+        
+        if (articles[newIndex]) {
+          AppStorage.set('selectedArticleId', articles[newIndex].id)
+          console.info('GlobalState', `Prev: Switched to ${articles[newIndex].title} (${newIndex})`)
+        }
+        
         AppStorage.set('refreshTrigger', Date.now())
-        console.info('GlobalState', `切换到上一篇文章: ${newIndex}`)
         resolve(true)
       } else {
-        console.info('GlobalState', '已是第一篇文章')
+        console.info('GlobalState', 'Prev: Already at first article')
         resolve(false)
       }
     })
@@ -372,12 +406,42 @@ export class GlobalState {
   }
 
   /**
+   * 获取第二栏折叠状态（运行时）
+   */
+  static getSecondColumnCollapsed(): boolean {
+    return AppStorage.get<boolean>('isSecondColumnCollapsed') ?? false
+  }
+
+  /**
+   * 设置第二栏折叠状态，同时持久化到首选项
+   */
+  static setSecondColumnCollapsed(isCollapsed: boolean) {
+    AppStorage.set('isSecondColumnCollapsed', isCollapsed)
+    // 持久化
+    try {
+      PreferencesUtil.saveSecondColumnCollapseStateSync(isCollapsed)
+    } catch (e) {
+      console.warn('GlobalState', '首选项未初始化或保存失败, err=', JSON.stringify(e))
+    }
+  }
+
+  /**
+   * 切换第二栏折叠状态
+   */
+  static toggleSecondColumn() {
+    const current = AppStorage.get<boolean>('isSecondColumnCollapsed') ?? false
+    GlobalState.setSecondColumnCollapsed(!current)
+  }
+
+  /**
    * 处理Feed点击（全局状态管理）
    */
   static selectFeed(feedId: string) {
     AppStorage.set('selectedFeedId', feedId)
     AppStorage.set('selectedArticleId', '')
     AppStorage.set('currentArticleIndex', -1)
+    AppStorage.set('articleListTotal', 0)
+    AppStorage.set('currentArticleListJson', '[]')
     console.info('GlobalState', `选择Feed: ${feedId}`)
   }
 
@@ -395,7 +459,16 @@ export class GlobalState {
    */
   static setCurrentArticleList(articles: SimplifiedArticle[]) {
     // 只保存文章的基本信息，不缓存内容和摘要以节省内存
-    AppStorage.set('currentArticleListJson', JSON.stringify(articles))
+    const simpleList: SimplifiedArticle[] = articles.map((item): SimplifiedArticle => {
+      const simple: SimplifiedArticle = {
+        id: item.id,
+        title: item.title,
+        readStatus: item.readStatus,
+        starredStatus: item.starredStatus
+      }
+      return simple
+    })
+    AppStorage.set('currentArticleListJson', JSON.stringify(simpleList))
     console.info('GlobalState', `设置当前文章列表: ${articles.length} 篇文章`)
   }
 
